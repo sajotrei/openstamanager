@@ -149,10 +149,20 @@ class WidgetManager implements ManagerInterface
             $result .= '>';
         }
 
+        $icon_class = '';
+        $icon_style = '';
+        if (!empty($widget['bgcolor'])) {
+            if (preg_match('/^#[0-9a-fA-F]{3,6}$/', (string) $widget['bgcolor'])) {
+                $icon_style = ' style="background-color:'.prepareToField($widget['bgcolor']).' !important;color:#333;"';
+            } else {
+                $icon_class = ' bg-'.$widget['bgcolor'];
+            }
+        }
+
         // Box delle informazioni
         $result .= '
         <div class="info-box">
-            <span class="info-box-icon bg-'.$widget['bgcolor'].'">';
+            <span class="info-box-icon'.$icon_class.'"'.$icon_style.'>';
 
         if (!empty($widget['icon'])) {
             $result .= '

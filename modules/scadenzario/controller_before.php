@@ -1,38 +1,21 @@
 <?php
 
-echo '
-<div class="container">
-    <div class="row">
-        <div class=col-md-12">
-            <h5>'.tr('Legenda').':</h5>
-        </div>
-    </div>
-    <div class="row">
-        <div class="col-md-4">
-            <span class="pull-left icon" style="background-color:#CCFFCC;"></span>
-            <span class="text">&nbsp;'.tr('Scadenza pagata').'</span>
-        </div>
-        <div class="col-md-4">
-            <span class="pull-left icon" style="background-color:#ec5353;"></span>
-            <span class="text">&nbsp;'.tr('Data concordata superata').'</span>
-        </div>
-        <div class="col-md-4">
-            <span class="pull-left icon" style="background-color:#b3d2e3;"></span>
-            <span class="text">&nbsp;'.tr('Data concordata').'</span>
-        </div>
-    </div>
-    <div class="row">
-        <div class="col-md-4">
-            <span class="pull-left icon" style="background-color:#f08080;"></span>
-            <span class="text">&nbsp;'.tr('Scaduta').'</span>
-        </div>
-        <div class="col-md-4">
-            <span class="pull-left icon" style="background-color:#f9f9c6;"></span>
-            <span class="text">&nbsp;'.tr('Scadenza entro 10 giorni').'</span>
-        </div>
-        <div class="col-md-4">
-            <span class="pull-left icon" style="background-color:#ffffff;"></span>
-            <span class="text">&nbsp;Scadenza futura</span>
-        </div>
-    </div>
-</div>';
+/*
+ * OpenSTAManager: il software gestionale open source per l'assistenza tecnica e la fatturazione
+ * Copyright (C) DevCode s.r.l.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program. If not, see <https://www.gnu.org/licenses/>.
+ */
+
+// La legenda dello Scadenzario è stata sostituita dai widget riepilogativi in alto.

@@ -44,3 +44,14 @@ function showScadenzarioGuide() {
         }
     });
 }
+
+function scadenzarioFiltroWidget(stato) {
+    var column = $('#th_Stato-scadenza input');
+
+    if (!column.length) {
+        return;
+    }
+
+    var value = '=' + stato;
+    column.val(column.val() === value ? '' : value).trigger($.Event('keyup', { keyCode: 13, which: 13 }));
+}
