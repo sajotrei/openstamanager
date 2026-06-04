@@ -193,6 +193,11 @@ class Preventivo extends Document
         return $this->belongsTo(Anagrafica::class, 'id_anagrafica');
     }
 
+    public function agente()
+    {
+        return $this->belongsTo(Anagrafica::class, 'id_agente');
+    }
+
     public function stato()
     {
         return $this->belongsTo(Stato::class, 'id_stato');

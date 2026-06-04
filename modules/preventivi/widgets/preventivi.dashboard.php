@@ -19,21 +19,24 @@
  */
 
 include_once __DIR__.'/../../../core.php';
-use Models\Module;
 use Modules\Preventivi\Preventivo;
 use Modules\Preventivi\Stato;
 
-$id_module = Module::where('name', 'Preventivi')->first()->id;
+$rs = Preventivo::with(['agente', 'descrizioni', 'righe', 'articoli', 'sconti'])
+    ->where('id_stato', '=', Stato::where('name', 'In lavorazione')->first()->id)
+    ->where('default_revision', '=', 1)
+    ->get();
 
-$rs = Preventivo::where('id_stato', '=', Stato::where('name', 'In lavorazione')->first()->id)->where('default_revision', '=', 1)->get();
-
-if (!empty($rs)) {
+if ($rs->isNotEmpty()) {
     echo "
 <table class='table table-hover'>
     <tr>
-        <th width='70%'>Preventivo</th>
-        <th width='15%'>Data inizio</th>
-        <th width='15%'>Data conclusione</th>
+        <th>".tr('Preventivo')."</th>
+        <th>".tr('Cliente')."</th>
+        <th>".tr('Agente')."</th>
+        <th class='text-right'>".tr('Valore')."</th>
+        <th class='text-center'>".tr('Data inizio')."</th>
+        <th class='text-center'>".tr('Data conclusione')."</th>
     </tr>";
 
     foreach ($rs as $preventivo) {
@@ -46,9 +49,17 @@ if (!empty($rs)) {
             $attr = '';
         }
 
-        echo '<tr '.$attr.'><td><a href="'.base_path_osm().'/editor.php?id_module='.$id_module.'&id_record='.$preventivo->id.'">'.$preventivo->nome."</a><br><small class='help-block'>".$preventivo->ragione_sociale.'</small></td>';
-        echo '<td '.$attr.'>'.$data_accettazione.'</td>';
-        echo '<td '.$attr.'>'.$data_conclusione.'</td></tr>';
+        $cliente = $preventivo->anagrafica;
+        $agente = $preventivo->agente;
+
+        echo '<tr '.$attr.'>';
+        echo '<td>'.Modules::link('Preventivi', $preventivo->id, $preventivo->nome, true, null, false).'</td>';
+        echo '<td>'.(!empty($cliente) ? Modules::link('Anagrafiche', $cliente->id, $cliente->ragione_sociale, true, null, false) : '').'</td>';
+        echo '<td>'.(!empty($agente) ? Modules::link('Anagrafiche', $agente->id, $agente->ragione_sociale, true, null, false) : '').'</td>';
+        echo '<td class="text-right">'.moneyFormat($preventivo->totale, 2).'</td>';
+        echo '<td class="text-center">'.$data_accettazione.'</td>';
+        echo '<td class="text-center">'.$data_conclusione.'</td>';
+        echo '</tr>';
     }
 
     echo '
