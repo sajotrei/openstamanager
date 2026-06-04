@@ -1224,6 +1224,23 @@ switch (post('op')) {
         }
 
         $id_tipo = post('id_tipo_interventot');
+        $anagrafica_tipo = $dbo->fetchOne('SELECT `an_anagrafiche`.`tipo`
+            FROM `in_interventi`
+            INNER JOIN `an_anagrafiche` ON `in_interventi`.`id_anagrafica` = `an_anagrafiche`.`id`
+            WHERE `in_interventi`.`id` = '.prepare($id_record));
+
+        if (!empty($anagrafica_tipo)) {
+            $tipologie_tipo_intervento = $dbo->fetchArray('SELECT `tipo`
+                FROM `in_tipi_intervento_tipologie`
+                WHERE `id_tipo_intervento` = '.prepare($id_tipo));
+            $tipologie_tipo_intervento = array_column($tipologie_tipo_intervento, 'tipo');
+
+            if (!empty($tipologie_tipo_intervento) && !in_array($anagrafica_tipo['tipo'], $tipologie_tipo_intervento)) {
+                flash()->error(tr('Il tipo attività selezionato non è compatibile con la tipologia dell\'anagrafica.'));
+                break;
+            }
+        }
+
         $sessione->setTipo($id_tipo);
 
         // Prezzi

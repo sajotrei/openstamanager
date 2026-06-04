@@ -147,6 +147,14 @@ switch ($resource) {
         }
 
         $intervento = Intervento::find($id_intervento);
+        $id_anagrafica = $superselect['id_anagrafica'] ?? ($intervento->id_anagrafica ?? null);
+        $anagrafica_tipo = null;
+
+        if (!empty($id_anagrafica)) {
+            $anagrafica_tipo = $dbo->fetchOne('SELECT `tipo`
+                FROM `an_anagrafiche`
+                WHERE `id` = '.prepare($id_anagrafica));
+        }
 
         // Query per i tipi di intervento in base alla sede al contratto o al tecnico
         // Priorità: tariffe contratto > tariffe sede > tariffe tecnico
@@ -237,8 +245,39 @@ switch ($resource) {
         $rs = $data['results'];
 
         foreach ($rs as $k => $r) {
+            $disabled = false;
+
+            // Controllo se il tipo intervento è compatibile con la tipologia dell'anagrafica dell'attività
+            if (!empty($anagrafica_tipo)) {
+                $tipologie_tipo_intervento = $dbo->fetchArray('SELECT `tipo`
+                    FROM `in_tipi_intervento_tipologie`
+                    WHERE `id_tipo_intervento` = '.prepare($r['id']));
+
+                $tipologie_tipo_intervento = array_column($tipologie_tipo_intervento, 'tipo');
+                if (!empty($tipologie_tipo_intervento)) {
+                    $compatibile = in_array($anagrafica_tipo['tipo'], $tipologie_tipo_intervento);
+                    if (!$compatibile) {
+                        $disabled = true;
+                    }
+                }
+            }
+
+            // Controllo se il tipo intervento è compatibile con il gruppo utente
+            $gruppi_tipo_intervento = $dbo->fetchArray('SELECT `id_gruppo`
+                FROM `in_tipi_intervento_groups`
+                WHERE `id_tipo_intervento` = '.prepare($r['id']));
+
+            $gruppi_tipo_intervento = array_column($gruppi_tipo_intervento, 'id_gruppo');
+            if (!empty($gruppi_tipo_intervento)) {
+                $compatibile = in_array($id_gruppo, $gruppi_tipo_intervento);
+                if (!$compatibile) {
+                    $disabled = true;
+                }
+            }
+
             $rs[$k] = array_merge($r, [
                 'text' => $r['descrizione'],
+                'disabled' => $disabled,
             ]);
         }
 
