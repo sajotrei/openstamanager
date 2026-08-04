@@ -1,0 +1,7 @@
+name = "Gestione SMS"
+version = "5.2"
+directory = "gestione_sms"
+options = "menu"
+icon = "fa fa-commenting-o"
+compatibility = "2.10.*"
+parent = 0
