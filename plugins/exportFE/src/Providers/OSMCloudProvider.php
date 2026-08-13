@@ -132,4 +132,95 @@ class OSMCloudProvider extends Services implements ProviderInterface
             'message' => tr('Fattura non generata correttamente'),
         ];
     }
+
+    public function getReceiptList(): array
+    {
+        $response = static::request('POST', 'notifiche_da_importare');
+        $body = static::responseBody($response);
+        $list = [];
+
+        if (!empty($body) && isset($body['status']) && (int) $body['status'] == 200) {
+            foreach ($body['results'] ?? [] as $result) {
+                $list[] = [
+                    'name' => $result,
+                ];
+            }
+        }
+
+        return $list;
+    }
+
+    public function getReceipt(string $name): ?string
+    {
+        $response = static::request('POST', 'notifica_da_importare', [
+            'name' => $name,
+        ]);
+        $body = static::responseBody($response);
+
+        if (!empty($body['content'])) {
+            return $body['content'];
+        }
+
+        return null;
+    }
+
+    public function processReceipt(string $filename)
+    {
+        $response = static::request('POST', 'notifica_xml_salvata', [
+            'filename' => $filename,
+        ]);
+        $body = static::responseBody($response);
+
+        if (empty($body) || !isset($body['status']) || (int) $body['status'] != 200) {
+            $status = $body['status'] ?? 'unknown';
+            $msg = $body['message'] ?? 'Errore sconosciuto';
+
+            return $status.' - '.$msg;
+        }
+
+        return true;
+    }
+
+    public function getPassiveInvoiceList(): array
+    {
+        $response = static::request('POST', 'fatture_da_importare');
+        $body = static::responseBody($response);
+
+        if (!empty($body) && isset($body['status']) && (int) $body['status'] == 200) {
+            return $body['results'] ?? [];
+        }
+
+        return [];
+    }
+
+    public function getPassiveInvoice(string $name): ?string
+    {
+        $response = static::request('POST', 'fattura_da_importare', [
+            'name' => $name,
+        ]);
+        $body = static::responseBody($response);
+
+        if (!empty($body['content'])) {
+            return $body['content'];
+        }
+
+        return null;
+    }
+
+    public function processPassiveInvoice(string $filename): string
+    {
+        $response = static::request('POST', 'fattura_xml_salvata', [
+            'filename' => $filename,
+        ]);
+        $body = static::responseBody($response);
+
+        if (empty($body) || !isset($body['status']) || (int) $body['status'] != 200) {
+            $status = $body['status'] ?? 'unknown';
+            $msg = $body['message'] ?? 'Errore sconosciuto';
+
+            return $status.' - '.$msg;
+        }
+
+        return '';
+    }
 }

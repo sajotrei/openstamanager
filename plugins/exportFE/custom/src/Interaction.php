@@ -10,7 +10,7 @@ class Interaction extends Services
 {
     protected static function getProvider(): ProviderInterface
     {
-        return ProviderFactory::make(ProviderFactory::OSMCLOUD);
+        return ProviderFactory::make();
     }
 
     public static function isEnabled()

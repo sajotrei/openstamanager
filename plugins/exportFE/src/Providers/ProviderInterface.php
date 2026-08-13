@@ -25,4 +25,34 @@ interface ProviderInterface
      * @return array{code:int,results?:array,message?:string}
      */
     public function getInvoiceReceipts(int $id_record): array;
+
+    /**
+     * Elenca le ricevute remote ancora da importare.
+     *
+     * @return array<int,array{name:string}>
+     */
+    public function getReceiptList(): array;
+
+    public function getReceipt(string $name): ?string;
+
+    /**
+     * Conferma al provider che la ricevuta e' stata salvata in OSM.
+     *
+     * @return true|string
+     */
+    public function processReceipt(string $filename);
+
+    /**
+     * Elenca le fatture passive remote ancora da importare.
+     *
+     * @return array<int,array<string,mixed>>
+     */
+    public function getPassiveInvoiceList(): array;
+
+    public function getPassiveInvoice(string $name): ?string;
+
+    /**
+     * Conferma al provider che la fattura passiva e' stata salvata in OSM.
+     */
+    public function processPassiveInvoice(string $filename): string;
 }
