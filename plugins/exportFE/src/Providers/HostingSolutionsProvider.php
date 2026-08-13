@@ -73,7 +73,7 @@ class HostingSolutionsProvider implements ProviderInterface
 
             if ($existing) {
                 return [
-                    'code' => 409,
+                    'code' => 202,
                     'message' => tr('Invio gia registrato o con esito incerto: riconciliare prima di ritentare'),
                 ];
             }

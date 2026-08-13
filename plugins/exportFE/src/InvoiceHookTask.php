@@ -90,6 +90,10 @@ class InvoiceHookTask extends Manager
             $fattura->fe_attempt = 0;
             $fattura->save();
             ++$inviate;
+        } elseif ($response_invio['code'] == 202) {
+            $this->markAsPendingProviderOutcome($fattura, $in_attesa);
+        } elseif ($response_invio['code'] == 423) {
+            $this->postponeInvoice($fattura, $in_attesa);
         } else {
             $this->handleFailedAttempt($fattura, $response_invio['message'], $errori, $in_attesa, $fatture_errore);
         }
@@ -126,6 +130,24 @@ class InvoiceHookTask extends Manager
     }
 
     private function keepInQueue($fattura, &$in_attesa)
+    {
+        $fattura->codice_stato_fe = 'QUEUE';
+        $fattura->data_stato_fe = date('Y-m-d H:i:s');
+        $fattura->save();
+        ++$in_attesa;
+    }
+
+    private function markAsPendingProviderOutcome($fattura, &$in_attesa)
+    {
+        $fattura->hook_send = false;
+        $fattura->codice_stato_fe = 'WAIT';
+        $fattura->data_stato_fe = date('Y-m-d H:i:s');
+        $fattura->fe_attempt = 0;
+        $fattura->save();
+        ++$in_attesa;
+    }
+
+    private function postponeInvoice($fattura, &$in_attesa)
     {
         $fattura->codice_stato_fe = 'QUEUE';
         $fattura->data_stato_fe = date('Y-m-d H:i:s');
