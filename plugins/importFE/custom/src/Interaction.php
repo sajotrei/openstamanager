@@ -4,15 +4,11 @@ namespace Plugins\ImportFE;
 
 use API\Services;
 use Models\Cache;
-use Plugins\ExportFE\Providers\HostingSolutionsProvider;
 use Plugins\ExportFE\Providers\ProviderFactory;
-use Plugins\ExportFE\Providers\ProviderSettings;
 use Util\XML;
 
 class Interaction extends Services
 {
-    private const MOCK_PASSIVE_CACHE = 'Hosting Solutions FE Mock Passive Processed';
-
     protected static function getProvider()
     {
         return ProviderFactory::make();
@@ -40,10 +36,6 @@ class Interaction extends Services
     public static function getRemoteList()
     {
         if (!self::isEnabled()) {
-            return [];
-        }
-
-        if (self::isProcessedPassiveMock()) {
             return [];
         }
 
@@ -116,38 +108,7 @@ class Interaction extends Services
             return tr('Nome fattura elettronica non valido');
         }
 
-        $result = static::getProvider()->processPassiveInvoice($filename);
-
-        if ($result === '' && self::isHostingSolutionsPassiveMock()) {
-            $cache = Cache::where('name', self::MOCK_PASSIVE_CACHE)->first();
-            if (empty($cache)) {
-                $cache = Cache::build(self::MOCK_PASSIVE_CACHE);
-            }
-            $cache->set(true);
-        }
-
-        return $result;
-    }
-
-    private static function isProcessedPassiveMock(): bool
-    {
-        if (!self::isHostingSolutionsPassiveMock()) {
-            return false;
-        }
-
-        $cache = Cache::where('name', self::MOCK_PASSIVE_CACHE)->first();
-        if (empty($cache)) {
-            return false;
-        }
-
-        return in_array($cache->content, [true, 1, '1', 'true'], true);
-    }
-
-    private static function isHostingSolutionsPassiveMock(): bool
-    {
-        return ProviderSettings::selectedProvider() === ProviderFactory::HOSTING_SOLUTIONS
-            && ProviderSettings::isHostingSolutionsMockEnabled()
-            && ProviderSettings::hostingSolutionsMockScenario() === HostingSolutionsProvider::SCENARIO_PASSIVE;
+        return static::getProvider()->processPassiveInvoice($filename);
     }
 
     private static function sanitizeRemoteName(string $name): ?string
