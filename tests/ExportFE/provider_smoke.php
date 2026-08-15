@@ -43,6 +43,7 @@ namespace {
         }
     };
 
+    $assert(ProviderFactory::CONNECTOR_VERSION === '1.0.4-test', 'unexpected connector version');
     $assert(ProviderSettings::selectedProvider() === ProviderFactory::OSMCLOUD, 'default provider must be OSMCloud');
     $assert(ProviderFactory::make() instanceof OSMCloudProvider, 'factory must default to OSMCloud');
 
@@ -78,6 +79,21 @@ namespace {
     } catch (\InvalidArgumentException) {
         $assert(true, 'invalid base64 throws');
     }
+
+    // Regression statiche di architettura/sicurezza. Sono intenzionalmente
+    // semplici: falliscono se vengono reintrodotti comportamenti rimossi.
+    $transactionSource = file_get_contents(__DIR__.'/../../plugins/exportFE/src/Providers/ProviderTransactionRepository.php');
+    $hostingSource = file_get_contents(__DIR__.'/../../plugins/exportFE/src/Providers/HostingSolutionsProvider.php');
+    $receiptSource = file_get_contents(__DIR__.'/../../plugins/receiptFE/custom/src/Interaction.php');
+    $importSource = file_get_contents(__DIR__.'/../../plugins/importFE/custom/src/Interaction.php');
+
+    $assert(!str_contains($transactionSource, 'next_poll_at'), 'generic provider polling field must not return');
+    $assert(str_contains($transactionSource, 'recoverStaleSending'), 'stale SENDING recovery is required');
+    $assert(str_contains($transactionSource, 'STATUS_FINAL'), 'final duplicate guard is required');
+    $assert(str_contains($hostingSource, 'findOpenByReceiptFilename'), 'mock receipts must be bound to tracked transactions');
+    $assert(str_contains($hostingSource, 'uncertainResult'), 'ambiguous transport failures must map to uncertain');
+    $assert(str_contains($receiptSource, 'sanitizeRemoteName'), 'receipt remote filenames must be sanitized');
+    $assert(str_contains($importSource, 'sanitizeRemoteName'), 'passive remote filenames must be sanitized');
 
     echo 'provider smoke ok'.PHP_EOL;
 }
