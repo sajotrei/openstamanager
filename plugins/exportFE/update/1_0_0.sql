@@ -74,7 +74,6 @@ CREATE TABLE IF NOT EXISTS `fe_provider_transactions` (
     `last_error` TEXT NULL,
     `last_request_at` TIMESTAMP NULL,
     `last_response_at` TIMESTAMP NULL,
-    `next_poll_at` TIMESTAMP NULL,
     `created_at` TIMESTAMP NULL,
     `updated_at` TIMESTAMP NULL,
     PRIMARY KEY (`id`),
