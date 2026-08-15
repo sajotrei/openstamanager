@@ -6,7 +6,7 @@ INSERT IGNORE INTO `zz_settings` (`nome`, `valore`, `tipo`, `editable`, `sezione
 ('Hosting Solutions FE Abilitato', '0', 'boolean', 1, 'Fatturazione Elettronica', 13, 'Abilita il provider Hosting Solutions per questa installazione/azienda.'),
 ('Hosting Solutions FE Modalita mock', '1', 'boolean', 1, 'Fatturazione Elettronica', 14, 'Usa scenari simulati finche non sono disponibili documentazione API ufficiale e azienda in TEST.'),
 ('Hosting Solutions FE Mock Scenario', 'wait', 'list[send_ok,wait,delivered,not_delivered,rejected,timeout,http_4xx,http_5xx,malformed,passive_invoice,duplicate]', 1, 'Fatturazione Elettronica', 15, 'Scenario utilizzato esclusivamente dalla modalita simulazione Hosting Solutions.'),
-('Hosting Solutions FE Minuti polling', '30', 'integer', 1, 'Fatturazione Elettronica', 16, 'Intervallo minimo tra due controlli provider. Valore minimo applicato dal codice: 15 minuti.');
+('Hosting Solutions FE Minuti polling', '30', 'integer', 1, 'Fatturazione Elettronica', 16, 'Intervallo di riconciliazione provider riservato a eventuali controlli specifici Hosting Solutions. I flussi ordinari usano le task native OSM.');
 
 -- Allinea eventuali installazioni che hanno applicato una revisione precedente dell'update.
 UPDATE `zz_settings`
@@ -20,7 +20,8 @@ SET `tipo` = 'list[send_ok,wait,delivered,not_delivered,rejected,timeout,http_4x
 WHERE `nome` = 'Hosting Solutions FE Mock Scenario';
 
 UPDATE `zz_settings`
-SET `tipo` = 'integer'
+SET `tipo` = 'integer',
+    `help` = 'Intervallo di riconciliazione provider riservato a eventuali controlli specifici Hosting Solutions. I flussi ordinari usano le task native OSM.'
 WHERE `nome` = 'Hosting Solutions FE Minuti polling';
 
 CREATE TABLE IF NOT EXISTS `fe_provider_transactions` (
@@ -45,19 +46,8 @@ CREATE TABLE IF NOT EXISTS `fe_provider_transactions` (
     CONSTRAINT `fe_provider_transactions_document` FOREIGN KEY (`id_documento`) REFERENCES `co_documenti` (`id`) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
-INSERT INTO `zz_tasks` (`name`, `class`, `expression`, `enabled`)
-SELECT 'Polling provider Fatturazione Elettronica', 'Plugins\\ExportFE\\ProviderPollingTask', '*/30 * * * *', 1
-WHERE NOT EXISTS (
-    SELECT 1 FROM `zz_tasks` WHERE `class` = 'Plugins\\ExportFE\\ProviderPollingTask'
-);
-
-INSERT INTO `zz_tasks_lang` (`id_lang`, `id_record`, `title`)
-SELECT `zz_langs`.`id`, `zz_tasks`.`id`, IF(`zz_langs`.`id` = 1, 'Polling provider Fatturazione Elettronica', 'Electronic Invoicing Provider Polling')
-FROM `zz_tasks`
-INNER JOIN `zz_langs`
-WHERE `zz_tasks`.`class` = 'Plugins\\ExportFE\\ProviderPollingTask'
-  AND NOT EXISTS (
-      SELECT 1 FROM `zz_tasks_lang`
-      WHERE `zz_tasks_lang`.`id_lang` = `zz_langs`.`id`
-        AND `zz_tasks_lang`.`id_record` = `zz_tasks`.`id`
-  );
+-- Se una revisione precedente aveva registrato una task generica di polling provider,
+-- la disabilito: invio, ricevute e passive devono sfruttare le task native OSM.
+UPDATE `zz_tasks`
+SET `enabled` = 0
+WHERE `class` = 'Plugins\\ExportFE\\ProviderPollingTask';
