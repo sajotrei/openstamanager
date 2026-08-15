@@ -4,7 +4,7 @@ namespace Plugins\ExportFE\Providers;
 
 class ProviderFactory
 {
-    public const CONNECTOR_VERSION = '1.0.4-test';
+    public const CONNECTOR_VERSION = '1.0.5-test';
     public const OSMCLOUD = 'osmcloud';
     public const HOSTING_SOLUTIONS = 'hosting_solutions';
 
