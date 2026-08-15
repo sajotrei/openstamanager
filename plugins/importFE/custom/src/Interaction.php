@@ -5,6 +5,7 @@ namespace Plugins\ImportFE;
 use API\Services;
 use Models\Cache;
 use Plugins\ExportFE\Providers\ProviderFactory;
+use Util\XML;
 
 class Interaction extends Services
 {
@@ -90,6 +91,11 @@ class Interaction extends Services
             $content = static::getProvider()->getPassiveInvoice($name);
 
             if ($content !== null && $content !== '') {
+                // I documenti XML non firmati vengono validati prima della
+                // persistenza. I P7M restano al decoder nativo del gestionale.
+                if (str_ends_with(strtolower($name), '.xml')) {
+                    XML::read($content);
+                }
                 FatturaElettronica::store($name, $content);
             }
         }
