@@ -77,8 +77,6 @@ if ($enabled) {
         foreach ($task_definitions as $class => $definition) {
             $task = $task_rows[$class] ?? null;
 
-            // Compatibilità con installazioni storiche dove il campo class potrebbe
-            // essere stato alterato ma il nome task standard è rimasto invariato.
             if (empty($task)) {
                 foreach ($rows as $row) {
                     if ((string) $row['name'] === $definition['fallback_name']) {
@@ -108,6 +106,38 @@ $scheduler_icon_class = !$enabled ? 'text-secondary' : ($scheduler_ok ? 'text-su
 $pending = $counts[ProviderTransactionRepository::STATUS_SENDING]
     + $counts[ProviderTransactionRepository::STATUS_WAITING]
     + $counts[ProviderTransactionRepository::STATUS_UNCERTAIN];
+
+$preflight_issues = [];
+if ($is_hs) {
+    if (!ProviderSettings::isHostingSolutionsEnabled()) {
+        $preflight_issues[] = tr('Abilitare Hosting Solutions');
+    }
+
+    if (!ProviderSettings::isHostingSolutionsMockEnabled()) {
+        $preflight_issues[] = tr('La simulazione deve essere attiva');
+    }
+
+    if (!$tracking_available) {
+        $preflight_issues[] = tr('Tabella tracking non disponibile');
+    }
+
+    if ($enabled && !$scheduler_ok) {
+        $preflight_issues[] = tr('Schedulazione automatica da verificare');
+    }
+
+    try {
+        $azienda = \Modules\Anagrafiche\Anagrafica::find(setting('Azienda predefinita'));
+        if (empty($azienda)) {
+            $preflight_issues[] = tr('Azienda predefinita non configurata');
+        } elseif (empty(trim((string) $azienda->piva)) && empty(trim((string) $azienda->codice_fiscale))) {
+            $preflight_issues[] = tr('P.IVA o codice fiscale azienda mancanti');
+        }
+    } catch (\Throwable) {
+        $preflight_issues[] = tr('Impossibile verificare i dati fiscali aziendali');
+    }
+}
+
+$preflight_ready = $is_hs && empty($preflight_issues);
 
 ?>
 
@@ -181,8 +211,22 @@ $pending = $counts[ProviderTransactionRepository::STATUS_SENDING]
             <?php } elseif ($is_hs) { ?>
                 <div class="alert alert-warning mb-2">
                     <i class="fa fa-exclamation-triangle mr-1"></i>
-                    <?php echo tr('La modalità API reale Hosting Solutions non è ancora disponibile. Riattivare la simulazione per eseguire i test.'); ?>
+                    <?php echo tr('La modalità API reale Hosting Solutions non è ancora disponibile.'); ?>
                 </div>
+            <?php } ?>
+
+            <?php if ($is_hs) { ?>
+                <?php if ($preflight_ready) { ?>
+                    <div class="alert alert-success mb-2">
+                        <i class="fa fa-check-circle mr-1"></i>
+                        <?php echo tr('Controlli locali completati: configurazione pronta per i test in simulazione.'); ?>
+                    </div>
+                <?php } elseif (!empty($preflight_issues)) { ?>
+                    <div class="alert alert-warning mb-2">
+                        <i class="fa fa-wrench mr-1"></i>
+                        <?php echo tr('Prima dei test').': '.htmlentities(implode(' · ', $preflight_issues)); ?>
+                    </div>
+                <?php } ?>
             <?php } ?>
 
             <?php if ($tracking_available && $counts[ProviderTransactionRepository::STATUS_UNCERTAIN] > 0) { ?>
