@@ -6,13 +6,12 @@ use Plugins\ExportFE\Providers\ProviderTransactionRepository;
 
 $provider_name = ProviderSettings::selectedProvider();
 $is_hs = $provider_name === ProviderFactory::HOSTING_SOLUTIONS;
-$provider = ProviderFactory::make($provider_name);
-$enabled = false;
 
-try {
-    $enabled = $provider->isEnabled();
-} catch (\Throwable) {
-    $enabled = false;
+if ($is_hs) {
+    $enabled = ProviderSettings::isHostingSolutionsEnabled()
+        && ProviderSettings::isHostingSolutionsMockEnabled();
+} else {
+    $enabled = !empty(setting('OSMCloud Services API Token'));
 }
 
 $mode = $is_hs
@@ -47,7 +46,7 @@ if ($tracking_available) {
 }
 
 $provider_label = $is_hs ? 'Hosting Solutions' : 'OSMCloud';
-$status_label = $enabled ? tr('Attivo') : tr('Non attivo');
+$status_label = $enabled ? tr('Configurato') : tr('Da configurare');
 $status_class = $enabled ? 'success' : ($is_hs ? 'warning' : 'secondary');
 $polling = ProviderSettings::pollingMinutes();
 $pending = $counts[ProviderTransactionRepository::STATUS_SENDING]
@@ -113,12 +112,12 @@ $pending = $counts[ProviderTransactionRepository::STATUS_SENDING]
             <?php if ($is_hs && ProviderSettings::isHostingSolutionsMockEnabled()) { ?>
                 <div class="alert alert-info mb-2">
                     <i class="fa fa-info-circle mr-1"></i>
-                    <?php echo tr('Hosting Solutions è attivo in modalità simulazione. Nessun documento viene inviato alle API reali.'); ?>
+                    <?php echo tr('Hosting Solutions è in modalità simulazione. Nessun documento viene inviato alle API reali.'); ?>
                 </div>
-            <?php } elseif ($is_hs && !$enabled) { ?>
+            <?php } elseif ($is_hs) { ?>
                 <div class="alert alert-warning mb-2">
                     <i class="fa fa-exclamation-triangle mr-1"></i>
-                    <?php echo tr('Hosting Solutions è selezionato ma il provider reale non è ancora configurato. Non utilizzare questa modalità per invii fiscali.'); ?>
+                    <?php echo tr('La modalità API reale Hosting Solutions resta disabilitata finché non sono configurate e validate le API ufficiali.'); ?>
                 </div>
             <?php } ?>
 
