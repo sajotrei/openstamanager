@@ -1,35 +1,18 @@
 <?php
 
-/*
- * OpenSTAManager: il software gestionale open source per l'assistenza tecnica e la fatturazione
- * Copyright (C) DevCode s.r.l.
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program. If not, see <https://www.gnu.org/licenses/>.
- */
-
 namespace Plugins\ReceiptFE;
 
 use Models\Cache;
 use Tasks\Manager;
 
 /**
- * Task dedicata all'importazione di tutte le ricevute individuate dal sistema automatico di gestione Fatture Elettroniche.
- *
- * @see MissingReceiptTask Gestione ricevute non individuate per malfunzionamenti.
+ * Importazione automatica delle ricevute con comportamento compatibile con il
+ * task nativo, ma tollerante a cache mancanti e dati provider non validi.
  */
 class ReceiptTask extends Manager
 {
+    private const BATCH_SIZE = 25;
+
     public function execute()
     {
         $result = [
@@ -38,84 +21,93 @@ class ReceiptTask extends Manager
         ];
 
         if (!Interaction::isEnabled()) {
-            $result = [
-                'response' => 2,
-                'message' => tr('Importazione automatica disattivata'),
+            return [
+                'response' => 1,
+                'message' => tr('Canale di fatturazione elettronica non attivo'),
             ];
-
-            return $result;
         }
 
-        $todo_cache = Cache::where('name', 'Ricevute Elettroniche')->first();
-        $completed_cache = Cache::where('name', 'Ricevute Elettroniche importate')->first();
+        $todo_cache = $this->cache('Ricevute Elettroniche');
+        $completed_cache = $this->cache('Ricevute Elettroniche importate');
 
-        // Refresh cache
-        $list = Interaction::getRemoteList();
+        try {
+            $list = Interaction::getRemoteList();
+        } catch (\Throwable $e) {
+            $this->task->log('error', 'Errore recupero elenco ricevute FE', [
+                'message' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
 
-        $todo_cache->set($list);
+            return [
+                'response' => 2,
+                'message' => tr('Impossibile recuperare l’elenco delle ricevute'),
+            ];
+        }
+
+        $todo_cache->set(is_array($list) ? array_values($list) : []);
         $completed_cache->set([]);
 
-        // Caricamento elenco di importazione
-        $todo = $todo_cache->content;
+        $todo = is_array($todo_cache->content) ? array_values($todo_cache->content) : [];
         if (empty($todo)) {
-            $result = [
-                'response' => 1,
-                'message' => tr('Nessuna ricevuta da importare!'),
-            ];
-
-            return $result;
-        }
-
-        // Caricamento elenco di ricevute imporate
-        $completed = $completed_cache->content;
-        $count = (is_array($todo) ? count($todo) : 0);
-        $errors = 0;
-
-        // Esecuzione di 10 imporazioni
-        for ($i = 0; $i < 25 && $i < $count; ++$i) {
-            $element = $todo[$i];
-
-            if ($element !== null) {
-                // Importazione ricevuta
-                $name = $element['name'];
-                try {
-                    $fattura = Ricevuta::process($name);
-                } catch (\Throwable $e) {
-                    ++$errors;
-                    $this->task->log('error', 'Errore importazione ricevuta FE', [
-                        'file' => $name,
-                        'message' => $e->getMessage(),
-                        'trace' => $e->getTraceAsString(),
-                    ]);
-
-                    continue;
-                }
-
-                if ($fattura !== null) {
-                    $completed[] = $element;
-                    unset($todo[$i]);
-                }
-            }
-        }
-
-        // Aggiornamento cache
-        $todo_cache->set($todo);
-        $completed_cache->set($completed);
-
-        if (empty($list)) {
-            $result = [
+            return [
                 'response' => 1,
                 'message' => tr('Nessuna ricevuta da importare'),
             ];
         }
 
-        if ($errors > 0) {
-            $result = [
-                'response' => 2,
-                'message' => tr('Importazione completata con errori su alcune ricevute'),
-            ];
+        $completed = [];
+        $errors = 0;
+        $processed = 0;
+
+        foreach (array_slice($todo, 0, self::BATCH_SIZE) as $index => $element) {
+            $name = is_array($element) ? ($element['name'] ?? null) : $element;
+            if (empty($name)) {
+                ++$errors;
+                continue;
+            }
+
+            try {
+                $fattura = Ricevuta::process($name);
+                if ($fattura !== null) {
+                    $completed[] = is_array($element) ? $element : ['name' => $name];
+                    unset($todo[$index]);
+                    ++$processed;
+                } else {
+                    ++$errors;
+                    $this->task->log('warning', 'Ricevuta FE non associata a una fattura', [
+                        'file' => $name,
+                    ]);
+                }
+            } catch (\Throwable $e) {
+                ++$errors;
+                $this->task->log('error', 'Errore importazione ricevuta FE', [
+                    'file' => $name,
+                    'message' => $e->getMessage(),
+                    'trace' => $e->getTraceAsString(),
+                ]);
+            }
         }
 
+        $todo_cache->set(array_values($todo));
+        $completed_cache->set($completed);
+
+        if ($errors > 0) {
+            $result['response'] = 2;
+        }
+
+        $result['message'] = tr('Ricevute FE: _DONE_ importate, _PENDING_ ancora da elaborare, _ERRORS_ errori', [
+            '_DONE_' => $processed,
+            '_PENDING_' => count($todo),
+            '_ERRORS_' => $errors,
+        ]);
+
         return $result;
+    }
+
+    private function cache(string $name): Cache
+    {
+        $cache = Cache::where('name', $name)->first();
+
+        return $cache ?: Cache::build($name);
     }
 }
