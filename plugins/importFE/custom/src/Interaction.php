@@ -34,7 +34,20 @@ class Interaction extends Services
 
     public static function getRemoteList()
     {
-        return self::isEnabled() ? static::getProvider()->getPassiveInvoiceList() : [];
+        if (!self::isEnabled()) {
+            return [];
+        }
+
+        $result = [];
+        foreach ((array) static::getProvider()->getPassiveInvoiceList() as $item) {
+            $name = is_array($item) ? ($item['name'] ?? '') : $item;
+            $name = self::sanitizeRemoteName((string) $name);
+            if ($name !== null) {
+                $result[] = ['name' => $name];
+            }
+        }
+
+        return $result;
     }
 
     public static function getFileList($list = [], $directory = null, $plugin = null)
@@ -46,7 +59,7 @@ class Interaction extends Services
         if (!empty($files) && is_array($files)) {
             foreach ($files as $id => $file) {
                 $name = basename($file);
-                $pos = array_search($name, $names);
+                $pos = array_search($name, $names, true);
 
                 if ($pos === false) {
                     $list[] = [
@@ -65,6 +78,11 @@ class Interaction extends Services
 
     public static function getInvoiceFile($name)
     {
+        $name = self::sanitizeRemoteName((string) $name);
+        if ($name === null) {
+            throw new \UnexpectedValueException(tr('Nome fattura elettronica non valido'));
+        }
+
         $directory = FatturaElettronica::getImportDirectory();
         $file = $directory.'/'.$name;
 
@@ -81,6 +99,30 @@ class Interaction extends Services
 
     public static function processInvoice($filename)
     {
+        $filename = self::sanitizeRemoteName((string) $filename);
+        if ($filename === null) {
+            return tr('Nome fattura elettronica non valido');
+        }
+
         return static::getProvider()->processPassiveInvoice($filename);
+    }
+
+    private static function sanitizeRemoteName(string $name): ?string
+    {
+        $name = trim(str_replace('\\', '/', $name));
+        if ($name === '' || basename($name) !== $name) {
+            return null;
+        }
+
+        if (!preg_match('/^[A-Za-z0-9._-]+$/', $name)) {
+            return null;
+        }
+
+        $lower = strtolower($name);
+        if (!str_ends_with($lower, '.xml') && !str_ends_with($lower, '.xml.p7m') && !str_ends_with($lower, '.p7m')) {
+            return null;
+        }
+
+        return $name;
     }
 }
