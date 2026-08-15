@@ -1,84 +1,154 @@
 # Integrazione Hosting Solutions FE
 
-Base: OpenSTAManager `v2.10.4` (`fb56ec649fbf8730365f60fa62f60866fff78468`).
+Base verificata: OpenSTAManager `v2.10.4` (`fb56ec649fbf8730365f60fa62f60866fff78468`).
 
 Branch: `feature/hosting-solutions-fe-provider`.
 
-## Scelte architetturali
+## Principio architetturale verificato
 
 - OSM resta sorgente di fatture, XML, progressivo invio, stati FE, ricevute e import passive.
-- Il provider sostituisce solo il trasporto usato da `Interaction`.
-- `OSMCloudProvider` mantiene gli endpoint OSMCloud originali: `invio_fattura_xml`, `notifiche_fattura`, `notifiche_da_importare`, `notifica_da_importare`, `notifica_xml_salvata`, `fatture_da_importare`, `fattura_da_importare`, `fattura_xml_salvata`.
-- `HostingSolutionsProvider` resta mock/stub finche mancano documentazione API ufficiale e azienda HS in modalita TEST.
-- `Terzo intermediario` non viene toccato dal provider: in OSM 2.10.4 modifica `IdTrasmittente`, `TerzoIntermediarioOSoggettoEmittente` e `SoggettoEmittente=TZ`, quindi e' dato fiscale/XML, non configurazione del canale.
-- Non viene introdotta una seconda coda FE: viene riutilizzato `InvoiceHookTask` nativo.
+- Hosting Solutions sostituisce soltanto il trasporto usato dalle classi `Interaction`.
+- Non vengono introdotte code o scheduler paralleli: invio, ricevute e passive usano le task native OSM.
+- `OSMCloudProvider` mantiene gli endpoint OSMCloud originali.
+- `HostingSolutionsProvider` resta mock/stub finché mancano documentazione API ufficiale e azienda HS in modalità TEST.
+- `Terzo intermediario` non è un selettore provider: in OSM 2.10.4 influenza nome file/trasmittente e nodi fiscali dell'XML, quindi non viene impostato automaticamente.
+
+## Task native OSM 2.10.4 verificate
+
+L'update ufficiale `update/2_9_1.sql` configura:
+
+- invio FE (`Plugins\\ExportFE\\InvoiceHookTask`): `*/30 * * * *`;
+- importazione automatica ricevute FE: `0 */4 * * *`;
+- ricerca fatture passive (`Plugins\\ImportFE\\InvoiceHookTask`): `0 */24 * * *`.
+
+`cron.php` esegue le righe abilitate di `zz_tasks`; il commento nativo raccomanda un richiamo di sistema ogni 5 minuti.
+
+Queste frequenze sono quelle OSM 2.10.4, non sono ancora dichiarate ottimali per Hosting Solutions. Verranno rivalutate solo dopo aver verificato i rate limit/API ufficiali.
+
+## Hook/notifiche native riutilizzate
+
+- `Plugins\\ExportFE\\InvoiceHook`: stato invio FE in coda/errori.
+- `Plugins\\ImportFE\\InvoiceHook`: conteggio e link alle fatture passive da importare.
+- `Plugins\\ReceiptFE\\ReceiptHook`: ricevute importate/totali.
+- `Plugins\\ReceiptFE\\NotificheRicevuteHook`: scarti/errori e fatture `WAIT` da oltre 7 giorni.
+
+Gli hook restano UI/notifiche; le operazioni automatiche sono affidate alle task.
 
 ## Impostazioni aggiunte
 
 Le impostazioni sono nella sezione nativa `Fatturazione Elettronica`:
 
-- `Fatturazione Elettronica Provider`: select `osmcloud` / `hosting_solutions`.
-- `Hosting Solutions FE Abilitato`: abilita il provider per la singola installazione.
-- `Hosting Solutions FE Modalita mock`: deve restare attiva finche non ci sono API ufficiali.
-- `Hosting Solutions FE Mock Scenario`: select degli scenari simulati consentiti.
-- `Hosting Solutions FE Minuti polling`: intero, minimo 15 e massimo 1440 minuti.
+- `Fatturazione Elettronica Provider`: select `osmcloud` / `hosting_solutions`;
+- `Hosting Solutions FE Abilitato`;
+- `Hosting Solutions FE Modalita mock`;
+- `Hosting Solutions FE Mock Scenario`.
 
-La validazione e' applicata sia dall'interfaccia OSM sia da `ProviderSettings`, in modo che valori DB non validi tornino a fallback sicuri.
+Titolo e help sono registrati correttamente in `zz_settings_lang` (IT/EN), come richiesto dal modello `Models\\Setting` di OSM 2.10.4.
+
+L'impostazione sperimentale di polling provider è stata rimossa: non esiste più un secondo scheduler FE.
 
 ## Pannello di gestione
 
 La sezione `Fatturazione Elettronica` mostra un riepilogo locale del gateway con:
 
-- provider selezionato;
-- modalita nativa/mock/API reale;
-- intervallo polling;
-- numero transazioni aperte;
+- provider;
+- modalità nativa/mock/API reale;
+- indicazione `Task native OSM`;
+- transazioni aperte;
 - conteggi attesa, esito incerto, concluse ed errori;
-- avviso evidente quando Hosting Solutions e' in simulazione;
-- avviso sugli invii `UNCERTAIN` sospesi per sicurezza.
+- avviso modalità mock;
+- avviso `UNCERTAIN`.
 
-Il pannello non effettua chiamate remote durante il caricamento della pagina Impostazioni. Lo stato visualizzato e' locale/configurativo; i controlli remoti restano nei task e nelle azioni FE.
+Il pannello non effettua chiamate remote in apertura pagina.
 
 ## Anti doppio invio
 
-La tabella `fe_provider_transactions` conserva provider, filename, hash XML, tentativi, remote id/status, errore, date richiesta/risposta e prossimo polling.
+La tabella `fe_provider_transactions` conserva solo dati tecnici di lifecycle:
 
-Prima di inviare con Hosting Solutions il codice cerca una transazione aperta per stessa fattura, provider e hash XML. Se trova stati `SENDING`, `SENT`, `UNCERTAIN` o `WAITING`, blocca il nuovo POST e richiede riconciliazione.
+- provider;
+- filename;
+- hash XML;
+- tentativi;
+- remote id/status;
+- ultimo errore;
+- date richiesta/risposta;
+- stato tecnico.
 
-Timeout e casi ambigui vengono marcati `UNCERTAIN`: non devono essere ritentati automaticamente senza verifica remota.
+Prima dell'invio HS il codice acquisisce un `GET_LOCK` MySQL per fattura/provider/hash e cerca transazioni già aperte (`SENDING`, `SENT`, `UNCERTAIN`, `WAITING`).
 
-`InvoiceHookTask` tratta l'esito incerto come `WAIT` e disabilita il retry automatico dell'invio.
+Un timeout ambiguo viene marcato `UNCERTAIN`, la fattura OSM viene posta in `WAIT` e non viene ritentata automaticamente. La protezione vale anche per l'invio manuale.
 
-## Polling
+## Ricevute SDI
 
-`ProviderPollingTask` usa `next_poll_at` e processa soltanto transazioni `WAITING` o `UNCERTAIN` scadute per il controllo.
+Il provider restituisce il file; la gestione fiscale rimane in `Plugins\\ReceiptFE\\Ricevuta`:
 
-- ricevuta disponibile -> transazione `FINAL`;
-- nessuna ricevuta -> pianifica il controllo successivo;
-- errore provider -> registra l'errore e riprogramma;
-- batch limitato per evitare carico eccessivo.
+1. download tramite provider;
+2. salvataggio/allegato nativo OSM;
+3. parsing stato SDI nativo (`RC`, `MC`, `NS`, ecc.);
+4. aggiornamento `codice_stato_fe`, data, descrizione e ricevuta principale;
+5. cleanup file temporaneo;
+6. `Interaction::processReceipt()` verso il provider.
 
-Il mapping reale degli esiti Hosting Solutions sara completato con la documentazione API ufficiale.
+Il tracking provider viene marcato `FINAL` soltanto al punto 6, cioè dopo il completamento locale OSM.
 
-## Ciclo passivo e ricevute
+Il mock genera nomi ricevuta basati sul filename XML realmente trasmesso, per mantenere il progressivo usato dal parser OSM.
 
-`plugins/receiptFE/custom/src/Interaction.php` e `plugins/importFE/custom/src/Interaction.php` delegano al provider mantenendo il flusso nativo OSM per salvataggio e importazione dei file.
+## Recupero ricevute mancanti
 
-Il mock Hosting Solutions supporta anche documenti Base64 e una fattura passiva simulata per verificare il plumbing prima delle API reali.
+È presente un override `plugins/receiptFE/custom/src/MissingReceiptTask.php` perché il task nativo 2.10.4 non normalizza correttamente la struttura `code/results` usata da `Interaction` e non restituisce il normale risultato `response/message` atteso da `Tasks\\Task`.
+
+L'override mantiene il recupero delle fatture `WAIT` oltre 7 giorni, forza l'associazione alla fattura già nota e registra gli errori.
+
+## Fatture passive
+
+`plugins/importFE/custom/src/Interaction.php` delega lista/download/conferma al provider e conserva il motore nativo OSM.
+
+Verificato nel codice 2.10.4:
+
+- controllo P.IVA/CF destinatario/azienda;
+- controllo duplicato con progressivo invio, numero, data e fornitore;
+- creazione fattura tramite parser nativo;
+- conferma al provider con `processInvoice()` soltanto dopo il salvataggio locale riuscito.
+
+### Gap noto mock passivo
+
+La fixture passiva mock attuale verifica soltanto download/Base64/plumbing e **non è ancora una FatturaPA completa importabile**. Non va considerata test end-to-end. Va sostituita con una fixture valida coerente con l'azienda OSMLAB prima del collaudo passivo.
+
+## Update DB dell'integrazione
+
+L'update è `plugins/exportFE/update/1_0_0.sql`.
+
+È volutamente versionato come componente `1.0.0`, non come `2.10.4.1`: il motore OSM scopre autonomamente gli update nelle cartelle `plugins/*/update`, mentre la compatibilità target resta OSM 2.10.4.
+
+## UX invio manuale: gap noto
+
+L'interfaccia nativa `plugins/exportFE/edit.php` gestisce esplicitamente `200`, `301`, `500`; un `202` (invio/esito incerto) ricade oggi nel messaggio generico di invio fallito.
+
+La sicurezza è comunque garantita dal tracking e dallo stato `WAIT`: clic successivi non producono un nuovo POST effettivo. Prima del test utente va però introdotto un messaggio UI specifico per `202` senza duplicare inutilmente l'intero template nativo.
 
 ## Stato test
 
-Presente `tests/ExportFE/provider_smoke.php`, che copre almeno:
+`tests/ExportFE/provider_smoke.php` copre:
 
 - provider default/fallback;
 - selezione Hosting Solutions;
 - abilitazione mock;
-- fallback scenario mock non valido;
-- limite minimo/massimo polling;
-- decode Base64 valido e invalido.
+- fallback scenario non valido;
+- assenza del vecchio scheduler provider parallelo;
+- Base64 valido/invalido.
 
-Restano necessari test di integrazione su una copia OSM 2.10.4 con DB aggiornato e successivamente test end-to-end con azienda Hosting Solutions in modalita TEST.
+Non dichiarare ancora il ramo "testato end-to-end": restano necessari test su una copia OSM 2.10.4 con database aggiornato e, successivamente, test con azienda Hosting Solutions in modalità TEST.
 
-## Informazioni mancanti HS
+## Informazioni mancanti Hosting Solutions
 
-Servono endpoint, autenticazione, payload, codici risposta, idempotency key o ricerca remota per filename/progressivo/hash, mapping stati SDI, formato elenco ricevute, formato download documenti Base64, formato elenco/download passive e rate limit.
+Servono ancora documentazione ufficiale per:
+
+- endpoint;
+- autenticazione;
+- payload;
+- codici risposta;
+- identificativo/idempotency o ricerca remota per riconciliare timeout ambigui;
+- mapping stati;
+- formato elenco/download ricevute;
+- formato elenco/download passive Base64;
+- rate limit e frequenze consigliate.
