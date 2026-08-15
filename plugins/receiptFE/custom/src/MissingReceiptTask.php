@@ -10,8 +10,8 @@ use Tasks\Manager;
 /**
  * Recupero di sicurezza per fatture FE rimaste in WAIT oltre 7 giorni.
  *
- * Mantiene il comportamento nativo OSM 2.10.4 ma normalizza la risposta
- * provider (code/results) e restituisce sempre l'esito atteso da Tasks\Task.
+ * Normalizza la risposta provider (code/results), funziona anche senza una
+ * sessione utente attiva e restituisce sempre l'esito atteso dal task manager.
  */
 class MissingReceiptTask extends Manager
 {
@@ -30,9 +30,11 @@ class MissingReceiptTask extends Manager
         }
 
         $data_limite = (new Carbon())->subDays(7);
+        $period_start = $_SESSION['period_start'] ?? '2000-01-01';
+
         $in_attesa = Fattura::vendita()
             ->where('codice_stato_fe', 'WAIT')
-            ->where('data_stato_fe', '>=', $_SESSION['period_start'])
+            ->where('data_stato_fe', '>=', $period_start)
             ->where('data_stato_fe', '<', $data_limite)
             ->orderBy('data_stato_fe')
             ->get();
