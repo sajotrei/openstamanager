@@ -26,6 +26,15 @@ $sezione = filter('sezione');
 $impostazioni = Setting::where('sezione', $sezione)
     ->get();
 
+// Riepilogo locale del gateway FE. Il file e' opzionale per mantenere
+// compatibilita' con installazioni che non includono l'adapter provider.
+if ($sezione === 'Fatturazione Elettronica') {
+    $provider_status = base_dir().'/plugins/exportFE/provider_status.php';
+    if (file_exists($provider_status)) {
+        include $provider_status;
+    }
+}
+
 foreach ($impostazioni as $impostazione) {
     echo '
     <div class="col-md-4">
