@@ -58,6 +58,21 @@ namespace {
     $assert($provider instanceof HostingSolutionsProvider, 'factory must select Hosting Solutions');
     $assert($provider->isEnabled() === true, 'Hosting Solutions mock provider must be enabled with explicit settings');
 
+    $settings[ProviderSettings::SETTING_HS_MOCK_SCENARIO] = 'invalid-scenario';
+    $assert(
+        ProviderSettings::hostingSolutionsMockScenario() === HostingSolutionsProvider::SCENARIO_WAIT,
+        'invalid mock scenario must fall back to wait'
+    );
+
+    $settings[ProviderSettings::SETTING_HS_POLL_MINUTES] = '1';
+    $assert(ProviderSettings::pollingMinutes() === 15, 'polling must enforce minimum 15 minutes');
+
+    $settings[ProviderSettings::SETTING_HS_POLL_MINUTES] = '99999';
+    $assert(ProviderSettings::pollingMinutes() === 1440, 'polling must enforce maximum 1440 minutes');
+
+    $settings[ProviderSettings::SETTING_HS_POLL_MINUTES] = '30';
+    $assert(ProviderSettings::pollingMinutes() === 30, 'polling must preserve valid configured interval');
+
     $decoded = Base64Document::decode(base64_encode('<xml />'));
     $assert($decoded === '<xml />', 'base64 document decode failed');
 
