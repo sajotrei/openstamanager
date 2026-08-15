@@ -2,12 +2,81 @@
 
 /*
  * Override minimale del plugin ExportFE.
- * Mantiene integralmente la UI nativa OSM 2.10.4 e sostituisce soltanto
- * la gestione client dell'invio per distinguere gli esiti provider incerti.
+ * Mantiene integralmente la UI nativa e aggiunge soltanto gestione provider e
+ * diagnostica tecnica senza duplicare il motore fiscale del gestionale.
  */
+
+use Plugins\ExportFE\Providers\ProviderFactory;
+use Plugins\ExportFE\Providers\ProviderSettings;
+use Plugins\ExportFE\Providers\ProviderTransactionRepository;
 
 include dirname(__DIR__).'/edit.php';
 
+$provider_transaction = null;
+if (ProviderSettings::selectedProvider() === ProviderFactory::HOSTING_SOLUTIONS && !empty($id_record)) {
+    $repository = new ProviderTransactionRepository();
+    if ($repository->tableAvailable()) {
+        $provider_transaction = $repository->latestForDocument((int) $id_record, ProviderFactory::HOSTING_SOLUTIONS);
+    }
+}
+
+if (!empty($provider_transaction)) {
+    $status = (string) ($provider_transaction['status'] ?? '');
+    $status_map = [
+        ProviderTransactionRepository::STATUS_SENDING => [tr('In elaborazione'), 'info'],
+        ProviderTransactionRepository::STATUS_SENT => [tr('In attesa'), 'info'],
+        ProviderTransactionRepository::STATUS_WAITING => [tr('In attesa'), 'info'],
+        ProviderTransactionRepository::STATUS_UNCERTAIN => [tr('Esito incerto'), 'warning'],
+        ProviderTransactionRepository::STATUS_FINAL => [tr('Conclusa'), 'success'],
+        ProviderTransactionRepository::STATUS_FAILED => [tr('Errore'), 'danger'],
+    ];
+    [$status_label, $status_class] = $status_map[$status] ?? [$status, 'secondary'];
+    ?>
+
+<div class="card card-outline card-secondary mt-3">
+    <div class="card-header">
+        <h3 class="card-title">
+            <i class="fa fa-exchange mr-2"></i><?php echo tr('Stato provider'); ?>
+        </h3>
+        <div class="card-tools">
+            <span class="badge badge-<?php echo $status_class; ?>"><?php echo htmlentities($status_label); ?></span>
+        </div>
+    </div>
+    <div class="card-body py-2">
+        <div class="row small">
+            <div class="col-md-3">
+                <strong><?php echo tr('Provider'); ?>:</strong><br>
+                Hosting Solutions
+            </div>
+            <div class="col-md-3">
+                <strong><?php echo tr('Tentativi'); ?>:</strong><br>
+                <?php echo (int) ($provider_transaction['attempt'] ?? 0); ?>
+            </div>
+            <div class="col-md-3">
+                <strong><?php echo tr('Identificativo remoto'); ?>:</strong><br>
+                <?php echo !empty($provider_transaction['remote_id']) ? htmlentities((string) $provider_transaction['remote_id']) : '—'; ?>
+            </div>
+            <div class="col-md-3">
+                <strong><?php echo tr('Ultimo aggiornamento'); ?>:</strong><br>
+                <?php echo !empty($provider_transaction['updated_at']) ? timestampFormat($provider_transaction['updated_at']) : '—'; ?>
+            </div>
+        </div>
+
+        <?php if ($status === ProviderTransactionRepository::STATUS_UNCERTAIN) { ?>
+            <div class="alert alert-warning mt-2 mb-0">
+                <i class="fa fa-shield mr-1"></i>
+                <?php echo tr('L’esito dell’invio non è certo. Non ritentare il documento finché non è stato riconciliato con il provider.'); ?>
+            </div>
+        <?php } elseif ($status === ProviderTransactionRepository::STATUS_FAILED && !empty($provider_transaction['last_error'])) { ?>
+            <div class="alert alert-danger mt-2 mb-0">
+                <i class="fa fa-exclamation-triangle mr-1"></i>
+                <?php echo htmlentities((string) $provider_transaction['last_error']); ?>
+            </div>
+        <?php } ?>
+    </div>
+</div>
+<?php
+}
 ?>
 <script>
 function inviaFE(button) {
@@ -79,10 +148,6 @@ function inviaFE(button) {
         },
         error: function() {
             $("#main_loading").fadeOut();
-
-            // Una perdita di risposta HTTP non consente di sapere con certezza
-            // se il provider abbia ricevuto il documento. Impediamo il retry
-            // immediato e rileggiamo lo stato locale prima di una nuova azione.
             buttonRestore(button, restore);
             $(button).attr("disabled", true).addClass("disabled");
 
