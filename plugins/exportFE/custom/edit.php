@@ -79,12 +79,20 @@ function inviaFE(button) {
         },
         error: function() {
             $("#main_loading").fadeOut();
+
+            // Una perdita di risposta HTTP non consente di sapere con certezza
+            // se il provider abbia ricevuto il documento. Impediamo il retry
+            // immediato e rileggiamo lo stato locale prima di una nuova azione.
             buttonRestore(button, restore);
+            $(button).attr("disabled", true).addClass("disabled");
+
             swal(
-                "<?php echo addslashes(tr('Errore')); ?>",
-                "<?php echo addslashes(tr('Errore di comunicazione durante l’invio. Lo stato remoto non è noto: verificare prima di ritentare.')); ?>",
-                "error"
+                "<?php echo addslashes(tr('Esito invio non verificabile')); ?>",
+                "<?php echo addslashes(tr('La comunicazione si è interrotta durante l’invio. Non ritentare subito: il documento potrebbe essere già stato ricevuto dal provider. Verificare lo stato e le ricevute.')); ?>",
+                "warning"
             );
+
+            setTimeout(function() { location.reload(); }, 3000);
         }
     });
 }
