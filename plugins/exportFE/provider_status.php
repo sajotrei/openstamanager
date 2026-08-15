@@ -11,7 +11,6 @@ if ($is_hs) {
     $enabled = ProviderSettings::isHostingSolutionsEnabled()
         && ProviderSettings::isHostingSolutionsMockEnabled();
 } else {
-    // Stato locale: l'apertura delle impostazioni non deve effettuare chiamate remote.
     $enabled = !empty(setting('OSMCloud Services API Token'));
 }
 
@@ -46,9 +45,41 @@ if ($tracking_available) {
     }
 }
 
+$task_names = [
+    'Hook Invio Fatture Elettroniche' => tr('Invio fatture'),
+    'Importazione automatica Ricevute FE' => tr('Ricevute'),
+    'Hook Importazione Fatture Elettroniche' => tr('Fatture passive'),
+];
+$task_rows = [];
+$task_issues = [];
+
+try {
+    $rows = database()->fetchArray(
+        'SELECT `name`, `enabled`, `expression`, `last_executed_at`, `next_execution_at` FROM `zz_tasks` WHERE `name` IN (?, ?, ?)',
+        array_keys($task_names)
+    );
+
+    foreach ($rows as $row) {
+        $task_rows[$row['name']] = $row;
+    }
+
+    foreach ($task_names as $task_name => $label) {
+        if (empty($task_rows[$task_name])) {
+            $task_issues[] = $label.': '.tr('task mancante');
+        } elseif (empty($task_rows[$task_name]['enabled'])) {
+            $task_issues[] = $label.': '.tr('disabilitata');
+        }
+    }
+} catch (\Throwable) {
+    $task_issues[] = tr('Impossibile verificare la schedulazione automatica');
+}
+
+$scheduler_ok = empty($task_issues);
 $provider_label = $is_hs ? 'Hosting Solutions' : 'OSMCloud';
 $status_label = $enabled ? tr('Configurato') : tr('Da configurare');
 $status_class = $enabled ? 'success' : ($is_hs ? 'warning' : 'secondary');
+$scheduler_label = $scheduler_ok ? tr('Attiva') : tr('Da verificare');
+$scheduler_icon_class = $scheduler_ok ? 'text-success' : 'text-warning';
 $pending = $counts[ProviderTransactionRepository::STATUS_SENDING]
     + $counts[ProviderTransactionRepository::STATUS_WAITING]
     + $counts[ProviderTransactionRepository::STATUS_UNCERTAIN];
@@ -90,10 +121,10 @@ $pending = $counts[ProviderTransactionRepository::STATUS_SENDING]
 
                 <div class="col-lg-3 col-md-6">
                     <div class="info-box shadow-none border">
-                        <span class="info-box-icon bg-light"><i class="fa fa-clock-o text-warning"></i></span>
+                        <span class="info-box-icon bg-light"><i class="fa fa-clock-o <?php echo $scheduler_icon_class; ?>"></i></span>
                         <div class="info-box-content">
                             <span class="info-box-text"><?php echo tr('Automazione'); ?></span>
-                            <span class="info-box-number"><?php echo tr('Schedulazione automatica'); ?></span>
+                            <span class="info-box-number"><?php echo $scheduler_label; ?></span>
                         </div>
                     </div>
                 </div>
@@ -108,6 +139,13 @@ $pending = $counts[ProviderTransactionRepository::STATUS_SENDING]
                     </div>
                 </div>
             </div>
+
+            <?php if (!$scheduler_ok) { ?>
+                <div class="alert alert-warning mb-2">
+                    <i class="fa fa-clock-o mr-1"></i>
+                    <?php echo tr('Verificare la schedulazione automatica').': '.htmlentities(implode(' · ', $task_issues)); ?>
+                </div>
+            <?php } ?>
 
             <?php if ($is_hs && ProviderSettings::isHostingSolutionsMockEnabled()) { ?>
                 <div class="alert alert-info mb-2">
