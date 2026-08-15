@@ -1,48 +1,46 @@
 <?php
 
-/*
- * OpenSTAManager: il software gestionale open source per l'assistenza tecnica e la fatturazione
- * Copyright (C) DevCode s.r.l.
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program. If not, see <https://www.gnu.org/licenses/>.
- */
-
 namespace Plugins\ImportFE;
 
 use Tasks\Manager;
 
+/**
+ * Aggiornamento automatico dell'elenco delle fatture passive.
+ * Mantiene il comportamento nativo ma isola errori provider e dati inattesi.
+ */
 class InvoiceHookTask extends Manager
 {
     public function execute()
     {
-        $result = [
-            'response' => 1,
-            'message' => tr('FE passive aggiornate correttamente!'),
-        ];
+        if (!Interaction::isEnabled()) {
+            return [
+                'response' => 1,
+                'message' => tr('Canale di fatturazione elettronica non attivo'),
+            ];
+        }
 
         try {
             $list = Interaction::getInvoiceList();
-            if (empty($list)) {
-                $result['message'] = tr('Nessuna FE passiva da importare');
-            }
-        } catch (\Exception $e) {
-            $result['response'] = 2;
-            $result['message'] = tr('Errore durante l\'importazione delle FE passive: _ERR_', [
-                '_ERR_' => $e->getMessage(),
-            ]).'<br>';
-        }
+            $count = is_array($list) ? count($list) : 0;
 
-        return $result;
+            return [
+                'response' => 1,
+                'message' => $count > 0
+                    ? tr('_NUM_ fatture passive disponibili', ['_NUM_' => $count])
+                    : tr('Nessuna fattura passiva da importare'),
+            ];
+        } catch (\Throwable $e) {
+            $this->task->log('error', 'Errore aggiornamento fatture passive FE', [
+                'message' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            return [
+                'response' => 2,
+                'message' => tr('Errore durante l’aggiornamento delle fatture passive: _ERR_', [
+                    '_ERR_' => $e->getMessage(),
+                ]),
+            ];
+        }
     }
 }
