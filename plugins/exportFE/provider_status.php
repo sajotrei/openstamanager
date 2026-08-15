@@ -118,6 +118,7 @@ $pending = $counts[ProviderTransactionRepository::STATUS_SENDING]
                 <i class="fa fa-exchange mr-2"></i><?php echo tr('Gateway Fatturazione Elettronica'); ?>
             </h3>
             <div class="card-tools">
+                <span class="badge badge-light mr-1">v<?php echo ProviderFactory::CONNECTOR_VERSION; ?></span>
                 <span class="badge badge-<?php echo $status_class; ?>"><?php echo $status_label; ?></span>
             </div>
         </div>
