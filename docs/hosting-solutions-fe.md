@@ -43,9 +43,9 @@ Le impostazioni sono nella sezione nativa `Fatturazione Elettronica`:
 - `Hosting Solutions FE Modalita mock`;
 - `Hosting Solutions FE Mock Scenario`.
 
-Titolo e help sono registrati correttamente in `zz_settings_lang` (IT/EN), come richiesto dal modello `Models\\Setting` di OSM 2.10.4.
+Titolo e help sono registrati in `zz_settings_lang` (IT/EN), come richiesto dal modello `Models\\Setting` di OSM 2.10.4.
 
-L'impostazione sperimentale di polling provider è stata rimossa: non esiste più un secondo scheduler FE.
+L'impostazione sperimentale di polling provider è stata rimossa: non esiste un secondo scheduler FE.
 
 ## Pannello di gestione
 
@@ -78,6 +78,23 @@ Prima dell'invio HS il codice acquisisce un `GET_LOCK` MySQL per fattura/provide
 
 Un timeout ambiguo viene marcato `UNCERTAIN`, la fattura OSM viene posta in `WAIT` e non viene ritentata automaticamente. La protezione vale anche per l'invio manuale.
 
+Anche una perdita della risposta AJAX lato browser viene trattata in modo conservativo nell'UI: il pulsante viene disabilitato e la pagina viene ricaricata prima di consentire ulteriori azioni, perché il documento potrebbe essere già arrivato al provider.
+
+## UX invio manuale
+
+È presente `plugins/exportFE/custom/edit.php` come override minimale.
+
+L'override include integralmente il template nativo e ridefinisce soltanto `inviaFE()`, evitando di duplicare il grande `plugins/exportFE/edit.php`.
+
+Sono distinti gli esiti:
+
+- `200`: inviato;
+- `202`: invio sospeso/in attesa di riconciliazione, nessun retry immediato;
+- `301`: già inviato;
+- `423`: invio già in elaborazione;
+- `500/503`: errore provider/server;
+- errore di trasporto AJAX: stato remoto non verificabile, pulsante bloccato e rilettura stato.
+
 ## Ricevute SDI
 
 Il provider restituisce il file; la gestione fiscale rimane in `Plugins\\ReceiptFE\\Ricevuta`:
@@ -91,7 +108,7 @@ Il provider restituisce il file; la gestione fiscale rimane in `Plugins\\Receipt
 
 Il tracking provider viene marcato `FINAL` soltanto al punto 6, cioè dopo il completamento locale OSM.
 
-Il mock genera nomi ricevuta basati sul filename XML realmente trasmesso, per mantenere il progressivo usato dal parser OSM.
+Il mock genera nomi ricevuta dal filename XML realmente trasmesso: `<trasmittente>_<progressivo>_<RC|MC|NS>.xml`, coerentemente con il parser OSM che ricava progressivo e stato dal nome file.
 
 ## Recupero ricevute mancanti
 
@@ -110,21 +127,29 @@ Verificato nel codice 2.10.4:
 - creazione fattura tramite parser nativo;
 - conferma al provider con `processInvoice()` soltanto dopo il salvataggio locale riuscito.
 
-### Gap noto mock passivo
+### Fixture passiva mock
 
-La fixture passiva mock attuale verifica soltanto download/Base64/plumbing e **non è ancora una FatturaPA completa importabile**. Non va considerata test end-to-end. Va sostituita con una fixture valida coerente con l'azienda OSMLAB prima del collaudo passivo.
+Il vecchio XML vuoto è stato sostituito con una FatturaPA FPR12 completa per test di integrazione.
+
+La fixture contiene:
+
+- `DatiTrasmissione` e progressivo `HSM01`;
+- cedente/fornitore mock;
+- cessionario costruito dinamicamente dall'`Azienda predefinita` OSM;
+- P.IVA e/o codice fiscale reali dell'azienda locale, così il controllo destinatario nativo resta attivo;
+- `TD01`, data e numero documento;
+- una riga da 100,00 EUR + IVA 22%;
+- riepilogo IVA;
+- totale 122,00 EUR;
+- pagamento `MP05`.
+
+La fixture è destinata al collaudo OSMLAB, non rappresenta un documento fiscale reale e non viene inviata a SDI.
 
 ## Update DB dell'integrazione
 
 L'update è `plugins/exportFE/update/1_0_0.sql`.
 
 È volutamente versionato come componente `1.0.0`, non come `2.10.4.1`: il motore OSM scopre autonomamente gli update nelle cartelle `plugins/*/update`, mentre la compatibilità target resta OSM 2.10.4.
-
-## UX invio manuale: gap noto
-
-L'interfaccia nativa `plugins/exportFE/edit.php` gestisce esplicitamente `200`, `301`, `500`; un `202` (invio/esito incerto) ricade oggi nel messaggio generico di invio fallito.
-
-La sicurezza è comunque garantita dal tracking e dallo stato `WAIT`: clic successivi non producono un nuovo POST effettivo. Prima del test utente va però introdotto un messaggio UI specifico per `202` senza duplicare inutilmente l'intero template nativo.
 
 ## Stato test
 
@@ -137,7 +162,9 @@ La sicurezza è comunque garantita dal tracking e dallo stato `WAIT`: clic succe
 - assenza del vecchio scheduler provider parallelo;
 - Base64 valido/invalido.
 
-Non dichiarare ancora il ramo "testato end-to-end": restano necessari test su una copia OSM 2.10.4 con database aggiornato e, successivamente, test con azienda Hosting Solutions in modalità TEST.
+L'audit statico del codice OSM 2.10.4 è completato per invio, task, ricevute, passive, impostazioni e override custom.
+
+Non dichiarare ancora il ramo "testato end-to-end": resta necessario eseguire il collaudo runtime su una copia OSMLAB 2.10.4 con database aggiornato e, successivamente, il test con azienda Hosting Solutions in modalità TEST.
 
 ## Informazioni mancanti Hosting Solutions
 
