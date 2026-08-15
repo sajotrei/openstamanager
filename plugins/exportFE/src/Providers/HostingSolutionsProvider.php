@@ -72,6 +72,10 @@ class HostingSolutionsProvider implements ProviderInterface
             );
 
             if ($existing) {
+                // Vale anche per l'invio manuale: una transazione aperta non deve
+                // lasciare la fattura nuovamente inviabile fino alla riconciliazione.
+                $this->markDocumentWaiting($id_record);
+
                 return [
                     'code' => 202,
                     'message' => tr('Invio gia registrato o con esito incerto: riconciliare prima di ritentare'),
@@ -153,7 +157,20 @@ class HostingSolutionsProvider implements ProviderInterface
 
     public function processReceipt(string $filename)
     {
-        return $this->isEnabled() ? true : tr('Provider Hosting Solutions non configurato');
+        if (!$this->isEnabled()) {
+            return tr('Provider Hosting Solutions non configurato');
+        }
+
+        // Ricevuta::process() richiama questo metodo solo dopo il salvataggio
+        // nativo della ricevuta e l'aggiornamento dello stato della fattura.
+        // Il tracking tecnico viene quindi chiuso soltanto a valle del successo OSM.
+        $this->transactions->markFinalByReceiptFilename(
+            ProviderFactory::HOSTING_SOLUTIONS,
+            $filename,
+            $this->receiptStatusFromFilename($filename)
+        );
+
+        return true;
     }
 
     public function getPassiveInvoiceList(): array
@@ -175,6 +192,8 @@ class HostingSolutionsProvider implements ProviderInterface
             return null;
         }
 
+        // Fixture volutamente non dichiarata importabile: verrà sostituita con
+        // una FatturaPA completa e coerente con l'azienda OSM prima dei test E2E.
         $xml = '<?xml version="1.0" encoding="UTF-8"?><FatturaElettronica versione="FPR12"></FatturaElettronica>';
 
         return Base64Document::decode(base64_encode($xml));
@@ -227,6 +246,7 @@ class HostingSolutionsProvider implements ProviderInterface
 
         if ($scenario === self::SCENARIO_TIMEOUT) {
             $this->transactions->markUncertain($id_record, ProviderFactory::HOSTING_SOLUTIONS, $payload->hash, 'timeout');
+            $this->markDocumentWaiting($id_record);
 
             return [
                 'code' => 202,
@@ -236,17 +256,21 @@ class HostingSolutionsProvider implements ProviderInterface
 
         $remote_id = 'mock-'.substr($payload->hash, 0, 16);
         $this->transactions->markSent($id_record, ProviderFactory::HOSTING_SOLUTIONS, $payload->hash, $remote_id, $scenario);
-
-        database()->update('co_documenti', [
-            'codice_stato_fe' => 'WAIT',
-            'data_stato_fe' => date('Y-m-d H:i:s'),
-        ], ['id' => $id_record]);
+        $this->markDocumentWaiting($id_record);
 
         return [
             'code' => 200,
             'message' => tr('Invio simulato correttamente dal provider Hosting Solutions'),
             'remote_id' => $remote_id,
         ];
+    }
+
+    private function markDocumentWaiting(int $id_record): void
+    {
+        database()->update('co_documenti', [
+            'codice_stato_fe' => 'WAIT',
+            'data_stato_fe' => date('Y-m-d H:i:s'),
+        ], ['id' => $id_record]);
     }
 
     private function receiptCodeForScenario(): ?string
@@ -264,6 +288,14 @@ class HostingSolutionsProvider implements ProviderInterface
         $stem = pathinfo(basename($invoice_filename), PATHINFO_FILENAME);
 
         return $stem.'_'.$code.'.xml';
+    }
+
+    private function receiptStatusFromFilename(string $filename): string
+    {
+        $stem = pathinfo(basename($filename), PATHINFO_FILENAME);
+        $pieces = explode('_', $stem);
+
+        return substr((string) ($pieces[2] ?? 'receipt'), 0, 64);
     }
 
     private function mockReceipt(string $name): string
