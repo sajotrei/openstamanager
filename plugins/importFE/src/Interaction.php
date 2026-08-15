@@ -1,48 +1,33 @@
 <?php
 
-/*
- * OpenSTAManager: il software gestionale open source per l'assistenza tecnica e la fatturazione
- * Copyright (C) DevCode s.r.l.
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program. If not, see <https://www.gnu.org/licenses/>.
- */
-
 namespace Plugins\ImportFE;
 
 use API\Services;
 use Models\Cache;
+use Plugins\ExportFE\Providers\ProviderFactory;
+use Util\XML;
 
 /**
- * Classe per la gestione delle API esterne per l'importazione delle Fatture Elettroniche di acquisto.
- *
- * @since 2.4.3
+ * Punto di ingresso runtime per fatture passive FE, provider-aware.
+ * Resta nel percorso nativo per funzionare anche con autoload gia' ottimizzato.
  */
 class Interaction extends Services
 {
+    protected static function getProvider()
+    {
+        return ProviderFactory::make();
+    }
+
     public static function isEnabled()
     {
-        return parent::isEnabled() && self::verificaRisorsaAttiva('Fatturazione Elettronica');
+        return static::getProvider()->isEnabled();
     }
 
     public static function getInvoiceList($directory = null, $plugin = null)
     {
         $list = self::getRemoteList();
-
-        // Ricerca fisica
         $result = self::getFileList($list, $directory, $plugin);
 
-        // Aggiornamento cache hook
         $cache = Cache::where('name', 'Fatture Elettroniche')->first();
         if (empty($cache)) {
             $cache = Cache::build('Fatture Elettroniche');
@@ -54,33 +39,32 @@ class Interaction extends Services
 
     public static function getRemoteList()
     {
-        $list = [];
+        if (!self::isEnabled()) {
+            return [];
+        }
 
-        // Ricerca da remoto
-        if (self::isEnabled()) {
-            $response = static::request('POST', 'fatture_da_importare');
-            $body = static::responseBody($response);
-
-            if (!empty($body) && isset($body['status']) && (int) $body['status'] == 200) {
-                $list = $body['results'] ?? [];
+        $result = [];
+        foreach ((array) static::getProvider()->getPassiveInvoiceList() as $item) {
+            $name = is_array($item) ? ($item['name'] ?? '') : $item;
+            $name = self::sanitizeRemoteName((string) $name);
+            if ($name !== null) {
+                $result[] = ['name' => $name];
             }
         }
 
-        return $list;
+        return $result;
     }
 
     public static function getFileList($list = [], $directory = null, $plugin = null)
     {
         $names = array_column($list, 'name');
-
-        // Ricerca fisica
         $directory = FatturaElettronica::getImportDirectory($directory, $plugin);
 
         $files = glob($directory.'/*.xml*');
         if (!empty($files) && is_array($files)) {
             foreach ($files as $id => $file) {
                 $name = basename($file);
-                $pos = array_search($name, $names);
+                $pos = array_search($name, $names, true);
 
                 if ($pos === false) {
                     $list[] = [
@@ -99,17 +83,22 @@ class Interaction extends Services
 
     public static function getInvoiceFile($name)
     {
+        $name = self::sanitizeRemoteName((string) $name);
+        if ($name === null) {
+            throw new \UnexpectedValueException(tr('Nome fattura elettronica non valido'));
+        }
+
         $directory = FatturaElettronica::getImportDirectory();
         $file = $directory.'/'.$name;
 
         if (!file_exists($file)) {
-            $response = static::request('POST', 'fattura_da_importare', [
-                'name' => $name,
-            ]);
-            $body = static::responseBody($response);
+            $content = static::getProvider()->getPassiveInvoice($name);
 
-            if (!empty($body['content'])) {
-                FatturaElettronica::store($name, $body['content']);
+            if ($content !== null && $content !== '') {
+                if (str_ends_with(strtolower($name), '.xml')) {
+                    XML::read($content);
+                }
+                FatturaElettronica::store($name, $content);
             }
         }
 
@@ -118,19 +107,30 @@ class Interaction extends Services
 
     public static function processInvoice($filename)
     {
-        $response = static::request('POST', 'fattura_xml_salvata', [
-            'filename' => $filename,
-        ]);
-
-        $body = static::responseBody($response);
-
-        $message = '';
-        if (empty($body) || !isset($body['status']) || (int) $body['status'] != 200) {
-            $status = $body['status'] ?? 'unknown';
-            $msg = $body['message'] ?? 'Errore sconosciuto';
-            $message = $status.' - '.$msg;
+        $filename = self::sanitizeRemoteName((string) $filename);
+        if ($filename === null) {
+            return tr('Nome fattura elettronica non valido');
         }
 
-        return $message;
+        return static::getProvider()->processPassiveInvoice($filename);
+    }
+
+    private static function sanitizeRemoteName(string $name): ?string
+    {
+        $name = trim(str_replace('\\', '/', $name));
+        if ($name === '' || basename($name) !== $name) {
+            return null;
+        }
+
+        if (!preg_match('/^[A-Za-z0-9._-]+$/', $name)) {
+            return null;
+        }
+
+        $lower = strtolower($name);
+        if (!str_ends_with($lower, '.xml') && !str_ends_with($lower, '.xml.p7m') && !str_ends_with($lower, '.p7m')) {
+            return null;
+        }
+
+        return $name;
     }
 }
