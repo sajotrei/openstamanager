@@ -61,22 +61,27 @@ foreach ($impostazioni as $impostazione) {
         $hs_mock_setting_id = $impostazione->id;
     }
 
-    echo '\n<div class="col-md-4 fe-setting" data-setting-name="'.prepareToField($setting_name).'">'
-        .($input_html ?? Settings::input($impostazione->id)).
-        '</div>\n<script>';
+    echo '
+<div class="col-md-4 fe-setting" data-setting-name="'.prepareToField($setting_name).'">
+    '.($input_html ?? Settings::input($impostazione->id)).'
+</div>
+<script>';
 
     if ($impostazione->tipo == 'time' || $impostazione->tipo == 'date') {
-        echo 'input("setting['.$impostazione->id.']");
-        $(document).on("blur", "#setting'.$impostazione->id.'", function () {
-            salvaImpostazione('.$impostazione->id.', $("#setting'.$impostazione->id.'").val());
-        });';
+        echo '
+input("setting['.$impostazione->id.']");
+$(document).on("blur", "#setting'.$impostazione->id.'", function () {
+    salvaImpostazione('.$impostazione->id.', $("#setting'.$impostazione->id.'").val());
+});';
     } else {
-        echo 'input("setting['.$impostazione->id.']").change(function () {
-            salvaImpostazione('.$impostazione->id.', input(this).get());
-        });';
+        echo '
+input("setting['.$impostazione->id.']").change(function () {
+    salvaImpostazione('.$impostazione->id.', input(this).get());
+});';
     }
 
-    echo '</script>';
+    echo '
+</script>';
 }
 
 ?>
@@ -117,11 +122,14 @@ $(document).ready(function () {
     aggiornaVisibilitaProviderFE();
 
     input("setting[<?php echo $provider_setting_id; ?>]").change(function () {
-        setTimeout(aggiornaVisibilitaProviderFE, 50);
+        setTimeout(function () {
+            aggiornaVisibilitaProviderFE();
+            location.reload();
+        }, 250);
     });
 <?php if (!empty($hs_mock_setting_id)) { ?>
     input("setting[<?php echo $hs_mock_setting_id; ?>]").change(function () {
-        setTimeout(aggiornaVisibilitaProviderFE, 50);
+        setTimeout(aggiornaVisibilitaProviderFE, 100);
     });
 <?php } ?>
 });
