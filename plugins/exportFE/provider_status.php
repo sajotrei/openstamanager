@@ -74,6 +74,11 @@ if ($enabled) {
             $task_rows[(string) $row['class']] = $row;
         }
 
+        // Il cron di sistema viene normalmente richiamato ogni pochi minuti.
+        // Usiamo 10 minuti di tolleranza per evitare falsi allarmi subito dopo
+        // l'attivazione o durante un normale piccolo ritardo del cron.
+        $overdue_threshold = time() - 600;
+
         foreach ($task_definitions as $class => $definition) {
             $task = $task_rows[$class] ?? null;
 
@@ -88,8 +93,19 @@ if ($enabled) {
 
             if (empty($task)) {
                 $task_issues[] = $definition['label'].': '.tr('task mancante');
-            } elseif (empty($task['enabled'])) {
+                continue;
+            }
+
+            if (empty($task['enabled'])) {
                 $task_issues[] = $definition['label'].': '.tr('disabilitata');
+                continue;
+            }
+
+            if (!empty($task['next_execution_at'])) {
+                $next_execution = strtotime((string) $task['next_execution_at']);
+                if ($next_execution !== false && $next_execution < $overdue_threshold) {
+                    $task_issues[] = $definition['label'].': '.tr('esecuzione in ritardo');
+                }
             }
         }
     } catch (\Throwable) {
