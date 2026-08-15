@@ -112,6 +112,71 @@ class ProviderTransactionRepository
             'status' => self::STATUS_FAILED,
             'last_error' => $message,
             'last_response_at' => date('Y-m-d H:i:s'),
+            'next_poll_at' => null,
+        ]);
+    }
+
+    /**
+     * Restituisce le transazioni che possono essere interrogate dal task di polling.
+     *
+     * @return array<int,array<string,mixed>>
+     */
+    public function dueForPolling(string $provider, int $limit = 25): array
+    {
+        if (!$this->tableAvailable()) {
+            return [];
+        }
+
+        $limit = max(1, min(100, $limit));
+
+        return database()->fetchArray(
+            'SELECT * FROM `'.self::TABLE.'`
+             WHERE `provider` = ?
+               AND `status` IN (?, ?)
+               AND (`next_poll_at` IS NULL OR `next_poll_at` <= NOW())
+             ORDER BY COALESCE(`next_poll_at`, `updated_at`) ASC, `id` ASC
+             LIMIT '.$limit,
+            [$provider, self::STATUS_WAITING, self::STATUS_UNCERTAIN]
+        );
+    }
+
+    public function scheduleNextPoll(int $id_documento, string $provider, string $xml_hash, ?string $remote_status = null): void
+    {
+        $values = [
+            'status' => self::STATUS_WAITING,
+            'last_response_at' => date('Y-m-d H:i:s'),
+            'next_poll_at' => date('Y-m-d H:i:s', time() + ProviderSettings::pollingMinutes() * 60),
+        ];
+
+        if ($remote_status !== null) {
+            $values['remote_status'] = $remote_status;
+        }
+
+        $this->update($id_documento, $provider, $xml_hash, $values);
+    }
+
+    public function markFinal(int $id_documento, string $provider, string $xml_hash, ?string $remote_status = null): void
+    {
+        $values = [
+            'status' => self::STATUS_FINAL,
+            'last_response_at' => date('Y-m-d H:i:s'),
+            'next_poll_at' => null,
+            'last_error' => null,
+        ];
+
+        if ($remote_status !== null) {
+            $values['remote_status'] = $remote_status;
+        }
+
+        $this->update($id_documento, $provider, $xml_hash, $values);
+    }
+
+    public function recordPollingError(int $id_documento, string $provider, string $xml_hash, string $message): void
+    {
+        $this->update($id_documento, $provider, $xml_hash, [
+            'last_error' => $message,
+            'last_response_at' => date('Y-m-d H:i:s'),
+            'next_poll_at' => date('Y-m-d H:i:s', time() + ProviderSettings::pollingMinutes() * 60),
         ]);
     }
 
