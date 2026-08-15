@@ -65,33 +65,20 @@ if ($provider === 'hosting_solutions' && $hs_enabled) {
     }
 }
 
-// Ogni nuova selezione dello scenario passivo crea una nuova fixture logica:
-// progressivo e numero cambiano, cosi' il parser mantiene correttamente attivi
-// i controlli anti-duplicato anche durante test ripetuti.
+// Ogni nuova selezione dello scenario passivo rende nuovamente disponibile la
+// fixture, cosi' il ciclo lista -> import -> conferma puo' essere ripetuto.
 if ((string) $impostazione->nome === 'Hosting Solutions FE Mock Scenario') {
     $scenario = (string) \Models\Setting::where('nome', 'Hosting Solutions FE Mock Scenario')->value('valore');
 
     if ($scenario === 'passive_invoice') {
-        $processed = \Models\Cache::where('name', 'Hosting Solutions FE Mock Passive Processed')->first();
-        if (empty($processed)) {
-            $processed = \Models\Cache::build(
+        $cache = \Models\Cache::where('name', 'Hosting Solutions FE Mock Passive Processed')->first();
+        if (empty($cache)) {
+            $cache = \Models\Cache::build(
                 'Hosting Solutions FE Mock Passive Processed',
                 null,
                 \Carbon\Carbon::now()->addYears(10)
             );
         }
-        $processed->set([]);
-
-        $run_cache = \Models\Cache::where('name', 'Hosting Solutions FE Mock Passive Run')->first();
-        if (empty($run_cache)) {
-            $run_cache = \Models\Cache::build(
-                'Hosting Solutions FE Mock Passive Run',
-                null,
-                \Carbon\Carbon::now()->addYears(10)
-            );
-        }
-
-        $current = (int) ($run_cache->content ?? 0);
-        $run_cache->set(max(1, $current + 1));
+        $cache->set([]);
     }
 }
