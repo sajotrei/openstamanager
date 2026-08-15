@@ -5,11 +5,10 @@ namespace Plugins\ExportFE\Providers;
 use Models\Cache;
 
 /**
- * Provider Hosting Solutions.
+ * Provider Hosting Solutions in modalita' simulazione.
  *
- * La struttura e' predisposta prima dell'accesso alla documentazione API
- * riservata. Le chiamate reali verranno implementate solo sulla base della
- * documentazione ufficiale e dell'azienda impostata in modalita' TEST.
+ * La struttura HTTP reale verra' implementata esclusivamente sulla base della
+ * documentazione API ufficiale e dell'azienda Hosting Solutions in TEST.
  */
 class HostingSolutionsProvider implements ProviderInterface
 {
@@ -62,8 +61,6 @@ class HostingSolutionsProvider implements ProviderInterface
             ];
         }
 
-        // Se un processo locale si e' interrotto mentre la richiesta era SENDING,
-        // non possiamo sapere se il provider l'abbia ricevuta: la rendiamo UNCERTAIN.
         $this->transactions->recoverStaleSending(ProviderFactory::HOSTING_SOLUTIONS);
 
         if (!$this->transactions->acquireLock($id_record, ProviderFactory::HOSTING_SOLUTIONS, $payload->hash)) {
@@ -134,6 +131,20 @@ class HostingSolutionsProvider implements ProviderInterface
             ];
         }
 
+        $transaction = $this->transactions->findReusable(
+            $id_record,
+            ProviderFactory::HOSTING_SOLUTIONS,
+            $payload->hash
+        );
+
+        if (!$transaction || ($transaction['status'] ?? null) === ProviderTransactionRepository::STATUS_FINAL) {
+            return [
+                'code' => 204,
+                'message' => tr('Nessuna ricevuta disponibile per una transazione aperta'),
+                'results' => [],
+            ];
+        }
+
         return [
             'code' => 200,
             'results' => [$this->receiptName($payload->filename, $code)],
@@ -167,7 +178,17 @@ class HostingSolutionsProvider implements ProviderInterface
 
     public function getReceipt(string $name): ?string
     {
-        return $this->isEnabled() ? $this->mockReceipt($name) : null;
+        if (!$this->isEnabled()) {
+            return null;
+        }
+
+        // Il provider simulato non deve poter creare ricevute arbitrarie: il nome
+        // deve corrispondere a una transazione effettivamente ancora aperta.
+        if (!$this->transactions->findOpenByReceiptFilename(ProviderFactory::HOSTING_SOLUTIONS, $name)) {
+            return null;
+        }
+
+        return $this->mockReceipt($name);
     }
 
     public function processReceipt(string $filename)
@@ -176,14 +197,13 @@ class HostingSolutionsProvider implements ProviderInterface
             return tr('Provider Hosting Solutions non configurato');
         }
 
-        // Viene chiamato soltanto dopo il salvataggio locale della ricevuta.
-        $this->transactions->markFinalByReceiptFilename(
+        $closed = $this->transactions->markFinalByReceiptFilename(
             ProviderFactory::HOSTING_SOLUTIONS,
             $filename,
             $this->receiptStatusFromFilename($filename)
         );
 
-        return true;
+        return $closed ? true : tr('Ricevuta non associata a una transazione provider aperta');
     }
 
     public function getPassiveInvoiceList(): array
@@ -234,8 +254,6 @@ class HostingSolutionsProvider implements ProviderInterface
         $scenario = ProviderSettings::hostingSolutionsMockScenario();
 
         if ($scenario === self::SCENARIO_DUPLICATE) {
-            // Un "duplicato" remoto indica che il provider conosce gia' il documento:
-            // non va ritentato come un normale errore applicativo.
             $remote_id = 'mock-duplicate-'.substr($payload->hash, 0, 12);
             $this->transactions->markSent(
                 $id_record,
@@ -254,7 +272,6 @@ class HostingSolutionsProvider implements ProviderInterface
         }
 
         if ($scenario === self::SCENARIO_HTTP_4XX) {
-            // Errore applicativo deterministico: la richiesta e' considerata non accettata.
             $this->transactions->markFailed(
                 $id_record,
                 ProviderFactory::HOSTING_SOLUTIONS,
@@ -381,7 +398,13 @@ class HostingSolutionsProvider implements ProviderInterface
     {
         $cache = Cache::where('name', self::MOCK_PASSIVE_CACHE)->first();
         if (empty($cache)) {
-            $cache = Cache::build(self::MOCK_PASSIVE_CACHE, '6 hours');
+            // La conferma del provider deve persistere tra le esecuzioni delle task.
+            // Il reset esplicito avviene selezionando nuovamente lo scenario passivo.
+            $cache = Cache::build(
+                self::MOCK_PASSIVE_CACHE,
+                null,
+                \Carbon\Carbon::now()->addYears(10)
+            );
         }
 
         $cache->set(array_values(array_unique(array_map('basename', $filenames))));
@@ -432,7 +455,8 @@ class HostingSolutionsProvider implements ProviderInterface
         } else {
             $xml = '<?xml version="1.0" encoding="UTF-8"?>'
                 .'<NotificaScarto><DataOraRicezione>'.$date.'</DataOraRicezione>'
-                .'<ListaErrori><Errore><Codice>MOCK01</Codice>'
+                .'<ListaErrori><Errore>'
+                .'<Codice>MOCK01</Codice>'
                 .'<Descrizione>Scarto simulato dal provider Hosting Solutions</Descrizione>'
                 .'<Suggerimento>Correggere il documento prima di un nuovo invio</Suggerimento>'
                 .'</Errore></ListaErrori></NotificaScarto>';
@@ -445,7 +469,7 @@ class HostingSolutionsProvider implements ProviderInterface
     {
         return [
             'code' => 501,
-            'message' => tr('Provider Hosting Solutions non configurato: abilitarlo solo in modalità simulazione finché mancano le API ufficiali'),
+            'message' => tr('Provider Hosting Solutions non configurato: la modalità reale non è ancora disponibile'),
         ];
     }
 }
