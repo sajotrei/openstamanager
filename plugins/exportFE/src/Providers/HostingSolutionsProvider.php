@@ -65,15 +65,8 @@ class HostingSolutionsProvider implements ProviderInterface
         }
 
         try {
-            $existing = $this->transactions->findReusable(
-                $id_record,
-                ProviderFactory::HOSTING_SOLUTIONS,
-                $payload->hash
-            );
-
+            $existing = $this->transactions->findReusable($id_record, ProviderFactory::HOSTING_SOLUTIONS, $payload->hash);
             if ($existing) {
-                // Vale anche per l'invio manuale: una transazione aperta non deve
-                // lasciare la fattura nuovamente inviabile fino alla riconciliazione.
                 $this->markDocumentWaiting($id_record);
 
                 return [
@@ -98,11 +91,7 @@ class HostingSolutionsProvider implements ProviderInterface
 
         $code = $this->receiptCodeForScenario();
         if ($code === null) {
-            return [
-                'code' => 204,
-                'message' => tr('Nessuna ricevuta disponibile'),
-                'results' => [],
-            ];
+            return ['code' => 204, 'message' => tr('Nessuna ricevuta disponibile'), 'results' => []];
         }
 
         try {
@@ -115,10 +104,7 @@ class HostingSolutionsProvider implements ProviderInterface
             ];
         }
 
-        return [
-            'code' => 200,
-            'results' => [$this->receiptName($payload->filename, $code)],
-        ];
+        return ['code' => 200, 'results' => [$this->receiptName($payload->filename, $code)]];
     }
 
     public function getReceiptList(): array
@@ -134,13 +120,9 @@ class HostingSolutionsProvider implements ProviderInterface
 
         $list = [];
         foreach ($this->transactions->openForProvider(ProviderFactory::HOSTING_SOLUTIONS) as $transaction) {
-            if (empty($transaction['filename'])) {
-                continue;
+            if (!empty($transaction['filename'])) {
+                $list[] = ['name' => $this->receiptName((string) $transaction['filename'], $code)];
             }
-
-            $list[] = [
-                'name' => $this->receiptName((string) $transaction['filename'], $code),
-            ];
         }
 
         return $list;
@@ -148,11 +130,7 @@ class HostingSolutionsProvider implements ProviderInterface
 
     public function getReceipt(string $name): ?string
     {
-        if (!$this->isEnabled()) {
-            return null;
-        }
-
-        return $this->mockReceipt($name);
+        return $this->isEnabled() ? $this->mockReceipt($name) : null;
     }
 
     public function processReceipt(string $filename)
@@ -161,9 +139,6 @@ class HostingSolutionsProvider implements ProviderInterface
             return tr('Provider Hosting Solutions non configurato');
         }
 
-        // Ricevuta::process() richiama questo metodo solo dopo il salvataggio
-        // nativo della ricevuta e l'aggiornamento dello stato della fattura.
-        // Il tracking tecnico viene quindi chiuso soltanto a valle del successo OSM.
         $this->transactions->markFinalByReceiptFilename(
             ProviderFactory::HOSTING_SOLUTIONS,
             $filename,
@@ -179,11 +154,7 @@ class HostingSolutionsProvider implements ProviderInterface
             return [];
         }
 
-        return [
-            [
-                'name' => 'IT00000000000_PASSIVE_TEST.xml',
-            ],
-        ];
+        return [['name' => 'IT01234567890_HSM01.xml']];
     }
 
     public function getPassiveInvoice(string $name): ?string
@@ -192,11 +163,7 @@ class HostingSolutionsProvider implements ProviderInterface
             return null;
         }
 
-        // Fixture volutamente non dichiarata importabile: verrà sostituita con
-        // una FatturaPA completa e coerente con l'azienda OSM prima dei test E2E.
-        $xml = '<?xml version="1.0" encoding="UTF-8"?><FatturaElettronica versione="FPR12"></FatturaElettronica>';
-
-        return Base64Document::decode(base64_encode($xml));
+        return Base64Document::decode(base64_encode($this->mockPassiveInvoice()));
     }
 
     public function processPassiveInvoice(string $filename): string
@@ -210,59 +177,31 @@ class HostingSolutionsProvider implements ProviderInterface
 
         if ($scenario === self::SCENARIO_DUPLICATE) {
             $this->transactions->markFailed($id_record, ProviderFactory::HOSTING_SOLUTIONS, $payload->hash, 'duplicate');
-
-            return [
-                'code' => 409,
-                'message' => tr('Fattura gia trasmessa secondo il provider mock'),
-            ];
+            return ['code' => 409, 'message' => tr('Fattura gia trasmessa secondo il provider mock')];
         }
-
         if ($scenario === self::SCENARIO_HTTP_4XX) {
             $this->transactions->markFailed($id_record, ProviderFactory::HOSTING_SOLUTIONS, $payload->hash, 'http_4xx');
-
-            return [
-                'code' => 400,
-                'message' => tr('Errore HTTP 4xx simulato dal provider mock'),
-            ];
+            return ['code' => 400, 'message' => tr('Errore HTTP 4xx simulato dal provider mock')];
         }
-
         if ($scenario === self::SCENARIO_HTTP_5XX) {
             $this->transactions->markFailed($id_record, ProviderFactory::HOSTING_SOLUTIONS, $payload->hash, 'http_5xx');
-
-            return [
-                'code' => 503,
-                'message' => tr('Errore HTTP 5xx simulato dal provider mock'),
-            ];
+            return ['code' => 503, 'message' => tr('Errore HTTP 5xx simulato dal provider mock')];
         }
-
         if ($scenario === self::SCENARIO_MALFORMED) {
             $this->transactions->markFailed($id_record, ProviderFactory::HOSTING_SOLUTIONS, $payload->hash, 'malformed_response');
-
-            return [
-                'code' => 500,
-                'message' => tr('Risposta non valida dal provider mock'),
-            ];
+            return ['code' => 500, 'message' => tr('Risposta non valida dal provider mock')];
         }
-
         if ($scenario === self::SCENARIO_TIMEOUT) {
             $this->transactions->markUncertain($id_record, ProviderFactory::HOSTING_SOLUTIONS, $payload->hash, 'timeout');
             $this->markDocumentWaiting($id_record);
-
-            return [
-                'code' => 202,
-                'message' => tr('Esito invio incerto: riconciliare prima di ritentare'),
-            ];
+            return ['code' => 202, 'message' => tr('Esito invio incerto: riconciliare prima di ritentare')];
         }
 
         $remote_id = 'mock-'.substr($payload->hash, 0, 16);
         $this->transactions->markSent($id_record, ProviderFactory::HOSTING_SOLUTIONS, $payload->hash, $remote_id, $scenario);
         $this->markDocumentWaiting($id_record);
 
-        return [
-            'code' => 200,
-            'message' => tr('Invio simulato correttamente dal provider Hosting Solutions'),
-            'remote_id' => $remote_id,
-        ];
+        return ['code' => 200, 'message' => tr('Invio simulato correttamente dal provider Hosting Solutions'), 'remote_id' => $remote_id];
     }
 
     private function markDocumentWaiting(int $id_record): void
@@ -271,6 +210,59 @@ class HostingSolutionsProvider implements ProviderInterface
             'codice_stato_fe' => 'WAIT',
             'data_stato_fe' => date('Y-m-d H:i:s'),
         ], ['id' => $id_record]);
+    }
+
+    /**
+     * FatturaPA passiva completa per test d'integrazione OSMLAB.
+     * Il destinatario viene costruito dall'Azienda predefinita, così il controllo
+     * P.IVA/CF del parser OSM resta attivo anche durante la simulazione.
+     */
+    private function mockPassiveInvoice(): string
+    {
+        $azienda = \Modules\Anagrafiche\Anagrafica::find(setting('Azienda predefinita'));
+        if (!$azienda) {
+            throw new \UnexpectedValueException(tr('Azienda predefinita non configurata per il test della fattura passiva'));
+        }
+
+        $country = $azienda->nazione->iso2 ?? 'IT';
+        $vat = preg_replace('/^'.preg_quote((string) $country, '/').'/', '', (string) $azienda->piva);
+        $cf = trim((string) $azienda->codice_fiscale);
+        if ($vat === '' && $cf === '') {
+            throw new \UnexpectedValueException(tr('P.IVA o codice fiscale azienda mancanti per il test della fattura passiva'));
+        }
+
+        $recipientFiscal = $vat !== ''
+            ? '<IdFiscaleIVA><IdPaese>'.$this->xml($country).'</IdPaese><IdCodice>'.$this->xml($vat).'</IdCodice></IdFiscaleIVA>'
+            : '';
+        if ($cf !== '') {
+            $recipientFiscal .= '<CodiceFiscale>'.$this->xml($cf).'</CodiceFiscale>';
+        }
+
+        $date = date('Y-m-d');
+        $denomination = $azienda->ragione_sociale ?: 'Azienda OSM TEST';
+        $address = $azienda->indirizzo ?: 'Via Test 1';
+        $cap = $azienda->cap ?: '00000';
+        $city = $azienda->citta ?: 'TEST';
+        $province = $azienda->provincia ?: 'XX';
+
+        return '<?xml version="1.0" encoding="UTF-8"?>'
+            .'<p:FatturaElettronica xmlns:p="http://ivaservizi.agenziaentrate.gov.it/docs/xsd/fatture/v1.2" versione="FPR12">'
+            .'<FatturaElettronicaHeader>'
+            .'<DatiTrasmissione><IdTrasmittente><IdPaese>IT</IdPaese><IdCodice>01234567890</IdCodice></IdTrasmittente><ProgressivoInvio>HSM01</ProgressivoInvio><FormatoTrasmissione>FPR12</FormatoTrasmissione><CodiceDestinatario>0000000</CodiceDestinatario></DatiTrasmissione>'
+            .'<CedentePrestatore><DatiAnagrafici><IdFiscaleIVA><IdPaese>IT</IdPaese><IdCodice>01234567890</IdCodice></IdFiscaleIVA><CodiceFiscale>01234567890</CodiceFiscale><Anagrafica><Denominazione>Fornitore Mock Hosting Solutions</Denominazione></Anagrafica><RegimeFiscale>RF01</RegimeFiscale></DatiAnagrafici><Sede><Indirizzo>Via Provider Test</Indirizzo><NumeroCivico>1</NumeroCivico><CAP>50100</CAP><Comune>Firenze</Comune><Provincia>FI</Provincia><Nazione>IT</Nazione></Sede></CedentePrestatore>'
+            .'<CessionarioCommittente><DatiAnagrafici>'.$recipientFiscal.'<Anagrafica><Denominazione>'.$this->xml($denomination).'</Denominazione></Anagrafica></DatiAnagrafici><Sede><Indirizzo>'.$this->xml($address).'</Indirizzo><CAP>'.$this->xml($cap).'</CAP><Comune>'.$this->xml($city).'</Comune><Provincia>'.$this->xml($province).'</Provincia><Nazione>'.$this->xml($country).'</Nazione></Sede></CessionarioCommittente>'
+            .'</FatturaElettronicaHeader>'
+            .'<FatturaElettronicaBody>'
+            .'<DatiGenerali><DatiGeneraliDocumento><TipoDocumento>TD01</TipoDocumento><Divisa>EUR</Divisa><Data>'.$date.'</Data><Numero>HS-MOCK-001</Numero><ImportoTotaleDocumento>122.00</ImportoTotaleDocumento><Causale>Documento generato esclusivamente per test integrazione Hosting Solutions</Causale></DatiGeneraliDocumento></DatiGenerali>'
+            .'<DatiBeniServizi><DettaglioLinee><NumeroLinea>1</NumeroLinea><Descrizione>Servizio mock Hosting Solutions</Descrizione><Quantita>1.00</Quantita><UnitaMisura>NR</UnitaMisura><PrezzoUnitario>100.00</PrezzoUnitario><PrezzoTotale>100.00</PrezzoTotale><AliquotaIVA>22.00</AliquotaIVA></DettaglioLinee><DatiRiepilogo><AliquotaIVA>22.00</AliquotaIVA><ImponibileImporto>100.00</ImponibileImporto><Imposta>22.00</Imposta><EsigibilitaIVA>I</EsigibilitaIVA></DatiRiepilogo></DatiBeniServizi>'
+            .'<DatiPagamento><CondizioniPagamento>TP02</CondizioniPagamento><DettaglioPagamento><ModalitaPagamento>MP05</ModalitaPagamento><DataScadenzaPagamento>'.$date.'</DataScadenzaPagamento><ImportoPagamento>122.00</ImportoPagamento></DettaglioPagamento></DatiPagamento>'
+            .'</FatturaElettronicaBody>'
+            .'</p:FatturaElettronica>';
+    }
+
+    private function xml(string $value): string
+    {
+        return htmlspecialchars($value, ENT_XML1 | ENT_COMPAT, 'UTF-8');
     }
 
     private function receiptCodeForScenario(): ?string
@@ -285,16 +277,12 @@ class HostingSolutionsProvider implements ProviderInterface
 
     private function receiptName(string $invoice_filename, string $code): string
     {
-        $stem = pathinfo(basename($invoice_filename), PATHINFO_FILENAME);
-
-        return $stem.'_'.$code.'.xml';
+        return pathinfo(basename($invoice_filename), PATHINFO_FILENAME).'_'.$code.'.xml';
     }
 
     private function receiptStatusFromFilename(string $filename): string
     {
-        $stem = pathinfo(basename($filename), PATHINFO_FILENAME);
-        $pieces = explode('_', $stem);
-
+        $pieces = explode('_', pathinfo(basename($filename), PATHINFO_FILENAME));
         return substr((string) ($pieces[2] ?? 'receipt'), 0, 64);
     }
 
@@ -304,27 +292,11 @@ class HostingSolutionsProvider implements ProviderInterface
         $date = date('c');
 
         if ($code === 'RC') {
-            $xml = '<?xml version="1.0" encoding="UTF-8"?>'
-                .'<RicevutaConsegna>'
-                .'<DataOraRicezione>'.$date.'</DataOraRicezione>'
-                .'<Destinatario><Descrizione>Ricevuta di consegna simulata</Descrizione></Destinatario>'
-                .'</RicevutaConsegna>';
+            $xml = '<?xml version="1.0" encoding="UTF-8"?><RicevutaConsegna><DataOraRicezione>'.$date.'</DataOraRicezione><Destinatario><Descrizione>Ricevuta di consegna simulata</Descrizione></Destinatario></RicevutaConsegna>';
         } elseif ($code === 'MC') {
-            $xml = '<?xml version="1.0" encoding="UTF-8"?>'
-                .'<MancataConsegna>'
-                .'<DataOraRicezione>'.$date.'</DataOraRicezione>'
-                .'<Descrizione>Mancata consegna simulata</Descrizione>'
-                .'</MancataConsegna>';
+            $xml = '<?xml version="1.0" encoding="UTF-8"?><MancataConsegna><DataOraRicezione>'.$date.'</DataOraRicezione><Descrizione>Mancata consegna simulata</Descrizione></MancataConsegna>';
         } else {
-            $xml = '<?xml version="1.0" encoding="UTF-8"?>'
-                .'<NotificaScarto>'
-                .'<DataOraRicezione>'.$date.'</DataOraRicezione>'
-                .'<ListaErrori><Errore>'
-                .'<Codice>MOCK01</Codice>'
-                .'<Descrizione>Scarto simulato dal provider Hosting Solutions</Descrizione>'
-                .'<Suggerimento>Correggere il documento prima di un nuovo invio</Suggerimento>'
-                .'</Errore></ListaErrori>'
-                .'</NotificaScarto>';
+            $xml = '<?xml version="1.0" encoding="UTF-8"?><NotificaScarto><DataOraRicezione>'.$date.'</DataOraRicezione><ListaErrori><Errore><Codice>MOCK01</Codice><Descrizione>Scarto simulato dal provider Hosting Solutions</Descrizione><Suggerimento>Correggere il documento prima di un nuovo invio</Suggerimento></Errore></ListaErrori></NotificaScarto>';
         }
 
         return Base64Document::decode(base64_encode($xml));
@@ -332,9 +304,6 @@ class HostingSolutionsProvider implements ProviderInterface
 
     private function notConfigured(): array
     {
-        return [
-            'code' => 501,
-            'message' => tr('Provider Hosting Solutions non configurato: abilitarlo solo in modalita mock finche mancano le API ufficiali'),
-        ];
+        return ['code' => 501, 'message' => tr('Provider Hosting Solutions non configurato: abilitarlo solo in modalita mock finche mancano le API ufficiali')];
     }
 }
