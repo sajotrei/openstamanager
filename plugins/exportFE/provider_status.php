@@ -11,7 +11,8 @@ if ($is_hs) {
     $enabled = ProviderSettings::isHostingSolutionsEnabled()
         && ProviderSettings::isHostingSolutionsMockEnabled();
 } else {
-    $enabled = !empty(setting('OSMCloud Services API Token'));
+    // Solo configurazione locale: nessuna chiamata remota aprendo le impostazioni.
+    $enabled = !empty(trim((string) setting('OSMCloud Services API Token')));
 }
 
 $mode = $is_hs
@@ -45,35 +46,55 @@ if ($tracking_available) {
     }
 }
 
-$task_names = [
-    'Hook Invio Fatture Elettroniche' => tr('Invio fatture'),
-    'Importazione automatica Ricevute FE' => tr('Ricevute'),
-    'Hook Importazione Fatture Elettroniche' => tr('Fatture passive'),
+$task_definitions = [
+    'Plugins\\ExportFE\\InvoiceHookTask' => [
+        'label' => tr('Invio fatture'),
+        'fallback_name' => 'Hook Invio Fatture Elettroniche',
+    ],
+    'Plugins\\ReceiptFE\\ReceiptTask' => [
+        'label' => tr('Ricevute'),
+        'fallback_name' => 'Importazione automatica Ricevute FE',
+    ],
+    'Plugins\\ImportFE\\InvoiceHookTask' => [
+        'label' => tr('Fatture passive'),
+        'fallback_name' => 'Hook Importazione Fatture Elettroniche',
+    ],
 ];
-$task_rows = [];
+
 $task_issues = [];
+$task_rows = [];
 
-try {
-    $rows = database()->fetchArray(
-        'SELECT `name`, `enabled`, `expression`, `last_executed_at`, `next_execution_at` FROM `zz_tasks` WHERE `name` IN (?, ?, ?)',
-        array_keys($task_names)
-    );
+if ($enabled) {
+    try {
+        $rows = database()->fetchArray(
+            'SELECT `name`, `class`, `enabled`, `expression`, `last_executed_at`, `next_execution_at` FROM `zz_tasks`'
+        );
 
-    foreach ($rows as $row) {
-        $task_rows[$row['name']] = $row;
-    }
+        foreach ($rows as $row) {
+            $task_rows[(string) $row['class']] = $row;
+        }
 
-    if ($enabled) {
-        foreach ($task_names as $task_name => $label) {
-            if (empty($task_rows[$task_name])) {
-                $task_issues[] = $label.': '.tr('task mancante');
-            } elseif (empty($task_rows[$task_name]['enabled'])) {
-                $task_issues[] = $label.': '.tr('disabilitata');
+        foreach ($task_definitions as $class => $definition) {
+            $task = $task_rows[$class] ?? null;
+
+            // Compatibilità con installazioni storiche dove il campo class potrebbe
+            // essere stato alterato ma il nome task standard è rimasto invariato.
+            if (empty($task)) {
+                foreach ($rows as $row) {
+                    if ((string) $row['name'] === $definition['fallback_name']) {
+                        $task = $row;
+                        break;
+                    }
+                }
+            }
+
+            if (empty($task)) {
+                $task_issues[] = $definition['label'].': '.tr('task mancante');
+            } elseif (empty($task['enabled'])) {
+                $task_issues[] = $definition['label'].': '.tr('disabilitata');
             }
         }
-    }
-} catch (\Throwable) {
-    if ($enabled) {
+    } catch (\Throwable) {
         $task_issues[] = tr('Impossibile verificare la schedulazione automatica');
     }
 }
@@ -82,7 +103,7 @@ $scheduler_ok = $enabled && empty($task_issues);
 $provider_label = $is_hs ? 'Hosting Solutions' : 'OSMCloud';
 $status_label = $enabled ? tr('Configurato') : tr('Da configurare');
 $status_class = $enabled ? 'success' : ($is_hs ? 'warning' : 'secondary');
-$scheduler_label = !$enabled ? tr('Non attiva') : ($scheduler_ok ? tr('Attiva') : tr('Da verificare'));
+$scheduler_label = !$enabled ? tr('Non richiesta') : ($scheduler_ok ? tr('Attiva') : tr('Da verificare'));
 $scheduler_icon_class = !$enabled ? 'text-secondary' : ($scheduler_ok ? 'text-success' : 'text-warning');
 $pending = $counts[ProviderTransactionRepository::STATUS_SENDING]
     + $counts[ProviderTransactionRepository::STATUS_WAITING]
