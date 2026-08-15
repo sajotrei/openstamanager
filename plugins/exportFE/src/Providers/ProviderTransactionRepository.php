@@ -47,7 +47,7 @@ class ProviderTransactionRepository
     /**
      * Restituisce le transazioni aperte del provider. Il risultato viene usato
      * per riconciliazione e dal provider mock delle ricevute, non come seconda
-     * coda di polling rispetto alle task native OSM.
+     * coda di polling rispetto alle task automatiche del gestionale.
      *
      * @return array<int,array<string,mixed>>
      */
@@ -133,10 +133,9 @@ class ProviderTransactionRepository
     {
         $this->update($id_documento, $provider, $xml_hash, [
             'status' => self::STATUS_WAITING,
-            'remote_id' => $remote_id,
-            'remote_status' => $remote_status,
+            'remote_id' => $remote_id !== null ? substr($remote_id, 0, 255) : null,
+            'remote_status' => $remote_status !== null ? substr($remote_status, 0, 64) : null,
             'last_response_at' => date('Y-m-d H:i:s'),
-            'next_poll_at' => null,
             'last_error' => null,
         ]);
     }
@@ -147,7 +146,6 @@ class ProviderTransactionRepository
             'status' => self::STATUS_UNCERTAIN,
             'last_error' => $message,
             'last_response_at' => date('Y-m-d H:i:s'),
-            'next_poll_at' => null,
         ]);
     }
 
@@ -157,7 +155,6 @@ class ProviderTransactionRepository
             'status' => self::STATUS_FAILED,
             'last_error' => $message,
             'last_response_at' => date('Y-m-d H:i:s'),
-            'next_poll_at' => null,
         ]);
     }
 
@@ -166,7 +163,6 @@ class ProviderTransactionRepository
         $values = [
             'status' => self::STATUS_FINAL,
             'last_response_at' => date('Y-m-d H:i:s'),
-            'next_poll_at' => null,
             'last_error' => null,
         ];
 
@@ -179,7 +175,7 @@ class ProviderTransactionRepository
 
     /**
      * Chiude il tracking solo dopo che Ricevuta::process() ha completato il
-     * salvataggio nativo e richiama processReceipt() sul provider.
+     * salvataggio locale e richiama processReceipt() sul provider.
      */
     public function markFinalByReceiptFilename(string $provider, string $receipt_filename, ?string $remote_status = null): bool
     {
