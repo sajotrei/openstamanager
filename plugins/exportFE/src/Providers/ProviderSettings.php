@@ -31,14 +31,33 @@ class ProviderSettings
     {
         $scenario = trim((string) self::get(self::SETTING_HS_MOCK_SCENARIO, HostingSolutionsProvider::SCENARIO_WAIT));
 
-        return $scenario !== '' ? $scenario : HostingSolutionsProvider::SCENARIO_WAIT;
+        return in_array($scenario, self::hostingSolutionsMockScenarios(), true)
+            ? $scenario
+            : HostingSolutionsProvider::SCENARIO_WAIT;
+    }
+
+    public static function hostingSolutionsMockScenarios(): array
+    {
+        return [
+            HostingSolutionsProvider::SCENARIO_OK,
+            HostingSolutionsProvider::SCENARIO_WAIT,
+            HostingSolutionsProvider::SCENARIO_DELIVERED,
+            HostingSolutionsProvider::SCENARIO_NOT_DELIVERED,
+            HostingSolutionsProvider::SCENARIO_REJECTED,
+            HostingSolutionsProvider::SCENARIO_TIMEOUT,
+            HostingSolutionsProvider::SCENARIO_HTTP_4XX,
+            HostingSolutionsProvider::SCENARIO_HTTP_5XX,
+            HostingSolutionsProvider::SCENARIO_MALFORMED,
+            HostingSolutionsProvider::SCENARIO_PASSIVE,
+            HostingSolutionsProvider::SCENARIO_DUPLICATE,
+        ];
     }
 
     public static function pollingMinutes(): int
     {
         $minutes = (int) self::get(self::SETTING_HS_POLL_MINUTES, 30);
 
-        return max(15, $minutes);
+        return min(1440, max(15, $minutes));
     }
 
     private static function enabled(string $name): bool
