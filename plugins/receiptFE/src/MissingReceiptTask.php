@@ -1,23 +1,5 @@
 <?php
 
-/*
- * OpenSTAManager: il software gestionale open source per l'assistenza tecnica e la fatturazione
- * Copyright (C) DevCode s.r.l.
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program. If not, see <https://www.gnu.org/licenses/>.
- */
-
 namespace Plugins\ReceiptFE;
 
 use Carbon\Carbon;
@@ -26,47 +8,93 @@ use Plugins\ExportFE\Interaction;
 use Tasks\Manager;
 
 /**
- * Task dedicata all'importazione forzata delle ricevute per Fatture in stato di Attesa da più di 7 giorni.
- * Questa funzione è necessaria per evitare eventuali problemi causati da importazioni segnato come eseguite ma non completate con successo, che si verificano in rari casi durante l'interazione con il sistema di gestione Fatture Elettroniche.
+ * Recupero di sicurezza per fatture FE rimaste in WAIT oltre 7 giorni.
  *
- * @see ReceiptTask Gestione ricevute rilevate correttamente.
+ * Normalizza la risposta provider (code/results), funziona anche senza una
+ * sessione utente attiva e restituisce sempre l'esito atteso dal task manager.
  */
 class MissingReceiptTask extends Manager
 {
     public function execute()
     {
+        $result = [
+            'response' => 1,
+            'message' => tr('Controllo ricevute FE mancanti completato'),
+        ];
+
         if (!Interaction::isEnabled()) {
-            return;
+            $result['response'] = 2;
+            $result['message'] = tr('Importazione automatica ricevute FE disattivata');
+
+            return $result;
         }
 
-        // Controllo se ci sono fatture in elaborazione da più di 7 giorni per le quali non ho ancora una ricevuta
         $data_limite = (new Carbon())->subDays(7);
+        $period_start = $_SESSION['period_start'] ?? '2000-01-01';
+
         $in_attesa = Fattura::vendita()
             ->where('codice_stato_fe', 'WAIT')
-            ->where('data_stato_fe', '>=', $_SESSION['period_start'])
+            ->where('data_stato_fe', '>=', $period_start)
             ->where('data_stato_fe', '<', $data_limite)
             ->orderBy('data_stato_fe')
             ->get();
 
-        // Ricerca delle ricevute dedicate
+        $checked = 0;
+        $imported = 0;
+        $errors = 0;
+
         foreach ($in_attesa as $fattura) {
-            $ricevute = Interaction::getInvoiceRecepits($fattura->id);
+            ++$checked;
 
-            // Importazione di tutte le ricevute trovate
-            foreach ($ricevute as $ricevuta) {
-                $name = $ricevuta['name'];
+            try {
+                $response = Interaction::getInvoiceRecepits($fattura->id);
+                $code = (int) ($response['code'] ?? 500);
+                $ricevute = $response['results'] ?? [];
 
-                try {
-                    Ricevuta::process($name);
-                } catch (\Throwable $e) {
-                    $this->task->log('error', 'Errore importazione ricevuta FE mancante', [
-                        'file' => $name,
-                        'id_fattura' => $fattura->id,
-                        'message' => $e->getMessage(),
-                        'trace' => $e->getTraceAsString(),
-                    ]);
+                if ($code !== 200 || empty($ricevute)) {
+                    continue;
                 }
+
+                foreach ($ricevute as $ricevuta) {
+                    $name = is_array($ricevuta) ? ($ricevuta['name'] ?? null) : $ricevuta;
+                    if (empty($name)) {
+                        continue;
+                    }
+
+                    try {
+                        if (Ricevuta::process($name, true, $fattura->id) !== null) {
+                            ++$imported;
+                        }
+                    } catch (\Throwable $e) {
+                        ++$errors;
+                        $this->task->log('error', 'Errore importazione ricevuta FE mancante', [
+                            'file' => $name,
+                            'id_fattura' => $fattura->id,
+                            'message' => $e->getMessage(),
+                            'trace' => $e->getTraceAsString(),
+                        ]);
+                    }
+                }
+            } catch (\Throwable $e) {
+                ++$errors;
+                $this->task->log('error', 'Errore recupero ricevute FE mancanti', [
+                    'id_fattura' => $fattura->id,
+                    'message' => $e->getMessage(),
+                    'trace' => $e->getTraceAsString(),
+                ]);
             }
         }
+
+        if ($errors > 0) {
+            $result['response'] = 2;
+        }
+
+        $result['message'] = tr('Ricevute FE mancanti: _CHECKED_ fatture controllate, _IMPORTED_ ricevute importate, _ERRORS_ errori', [
+            '_CHECKED_' => $checked,
+            '_IMPORTED_' => $imported,
+            '_ERRORS_' => $errors,
+        ]);
+
+        return $result;
     }
 }
