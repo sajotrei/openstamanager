@@ -2,11 +2,26 @@
 -- Da applicare sulle installazioni basate su OpenSTAManager 2.10.4.
 
 INSERT IGNORE INTO `zz_settings` (`nome`, `valore`, `tipo`, `editable`, `sezione`, `order`, `help`) VALUES
-('Fatturazione Elettronica Provider', 'osmcloud', 'string', 1, 'Fatturazione Elettronica', 12, 'Provider di trasporto FE: osmcloud oppure hosting_solutions. Non modifica il contenuto XML.'),
+('Fatturazione Elettronica Provider', 'osmcloud', 'list[osmcloud,hosting_solutions]', 1, 'Fatturazione Elettronica', 12, 'Provider di trasporto FE. OSMCloud mantiene il comportamento nativo; Hosting Solutions utilizza il nuovo adapter. Il provider non modifica il contenuto XML.'),
 ('Hosting Solutions FE Abilitato', '0', 'boolean', 1, 'Fatturazione Elettronica', 13, 'Abilita il provider Hosting Solutions per questa installazione/azienda.'),
 ('Hosting Solutions FE Modalita mock', '1', 'boolean', 1, 'Fatturazione Elettronica', 14, 'Usa scenari simulati finche non sono disponibili documentazione API ufficiale e azienda in TEST.'),
-('Hosting Solutions FE Mock Scenario', 'wait', 'string', 1, 'Fatturazione Elettronica', 15, 'Scenario mock: send_ok, wait, delivered, not_delivered, rejected, timeout, http_4xx, http_5xx, malformed, passive_invoice, duplicate.'),
-('Hosting Solutions FE Minuti polling', '30', 'int', 1, 'Fatturazione Elettronica', 16, 'Intervallo minimo tra due controlli provider. Valore minimo applicato dal codice: 15 minuti.');
+('Hosting Solutions FE Mock Scenario', 'wait', 'list[send_ok,wait,delivered,not_delivered,rejected,timeout,http_4xx,http_5xx,malformed,passive_invoice,duplicate]', 1, 'Fatturazione Elettronica', 15, 'Scenario utilizzato esclusivamente dalla modalita simulazione Hosting Solutions.'),
+('Hosting Solutions FE Minuti polling', '30', 'integer', 1, 'Fatturazione Elettronica', 16, 'Intervallo minimo tra due controlli provider. Valore minimo applicato dal codice: 15 minuti.');
+
+-- Allinea eventuali installazioni che hanno applicato una revisione precedente dell'update.
+UPDATE `zz_settings`
+SET `tipo` = 'list[osmcloud,hosting_solutions]',
+    `help` = 'Provider di trasporto FE. OSMCloud mantiene il comportamento nativo; Hosting Solutions utilizza il nuovo adapter. Il provider non modifica il contenuto XML.'
+WHERE `nome` = 'Fatturazione Elettronica Provider';
+
+UPDATE `zz_settings`
+SET `tipo` = 'list[send_ok,wait,delivered,not_delivered,rejected,timeout,http_4xx,http_5xx,malformed,passive_invoice,duplicate]',
+    `help` = 'Scenario utilizzato esclusivamente dalla modalita simulazione Hosting Solutions.'
+WHERE `nome` = 'Hosting Solutions FE Mock Scenario';
+
+UPDATE `zz_settings`
+SET `tipo` = 'integer'
+WHERE `nome` = 'Hosting Solutions FE Minuti polling';
 
 CREATE TABLE IF NOT EXISTS `fe_provider_transactions` (
     `id` INT NOT NULL AUTO_INCREMENT,
