@@ -22,23 +22,70 @@ class ProviderTransactionRepository
         }
     }
 
-    public function findReusable(int $id_documento, string $provider, string $xml_hash): ?array
+    public function findByHash(int $id_documento, string $provider, string $xml_hash): ?array
     {
         if (!$this->tableAvailable()) {
             return null;
         }
 
-        $statuses = [
+        $row = database()->fetchOne(
+            'SELECT * FROM `'.self::TABLE.'` WHERE `id_documento` = ? AND `provider` = ? AND `xml_hash` = ? ORDER BY `id` DESC LIMIT 1',
+            [$id_documento, $provider, $xml_hash]
+        );
+
+        return $row ?: null;
+    }
+
+    public function findReusable(int $id_documento, string $provider, string $xml_hash): ?array
+    {
+        $row = $this->findByHash($id_documento, $provider, $xml_hash);
+        if (!$row) {
+            return null;
+        }
+
+        return in_array($row['status'], [
             self::STATUS_SENDING,
             self::STATUS_SENT,
             self::STATUS_UNCERTAIN,
             self::STATUS_WAITING,
-        ];
+            self::STATUS_FINAL,
+        ], true) ? $row : null;
+    }
 
-        $placeholders = implode(',', array_fill(0, count($statuses), '?'));
+    /**
+     * Una richiesta rimasta SENDING oltre la finestra locale non puo' essere
+     * considerata fallita: il processo potrebbe essersi interrotto dopo aver
+     * consegnato la richiesta al provider. La trasformiamo quindi in UNCERTAIN.
+     */
+    public function recoverStaleSending(string $provider, int $older_than_minutes = 15): int
+    {
+        if (!$this->tableAvailable()) {
+            return 0;
+        }
+
+        $older_than_minutes = max(5, min(1440, $older_than_minutes));
+        $threshold = date('Y-m-d H:i:s', time() - ($older_than_minutes * 60));
+
+        return (int) database()->table(self::TABLE)
+            ->where('provider', $provider)
+            ->where('status', self::STATUS_SENDING)
+            ->where('updated_at', '<', $threshold)
+            ->update([
+                'status' => self::STATUS_UNCERTAIN,
+                'last_error' => 'local_sending_interrupted',
+                'updated_at' => date('Y-m-d H:i:s'),
+            ]);
+    }
+
+    public function latestForDocument(int $id_documento, string $provider): ?array
+    {
+        if (!$this->tableAvailable()) {
+            return null;
+        }
+
         $row = database()->fetchOne(
-            'SELECT * FROM `'.self::TABLE.'` WHERE `id_documento` = ? AND `provider` = ? AND `xml_hash` = ? AND `status` IN ('.$placeholders.') ORDER BY `id` DESC',
-            array_merge([$id_documento, $provider, $xml_hash], $statuses)
+            'SELECT * FROM `'.self::TABLE.'` WHERE `id_documento` = ? AND `provider` = ? ORDER BY `id` DESC LIMIT 1',
+            [$id_documento, $provider]
         );
 
         return $row ?: null;
@@ -62,10 +109,16 @@ class ProviderTransactionRepository
         return database()->fetchArray(
             'SELECT * FROM `'.self::TABLE.'`
              WHERE `provider` = ?
-               AND `status` IN (?, ?, ?)
+               AND `status` IN (?, ?, ?, ?)
              ORDER BY `updated_at` ASC, `id` ASC
              LIMIT '.$limit,
-            [$provider, self::STATUS_SENT, self::STATUS_WAITING, self::STATUS_UNCERTAIN]
+            [
+                $provider,
+                self::STATUS_SENDING,
+                self::STATUS_SENT,
+                self::STATUS_WAITING,
+                self::STATUS_UNCERTAIN,
+            ]
         );
     }
 
@@ -99,7 +152,7 @@ class ProviderTransactionRepository
              VALUES (?, ?, ?, ?, ?, 1, NOW(), NOW(), NOW())
              ON DUPLICATE KEY UPDATE
                 `attempt` = `attempt` + 1,
-                `status` = IF(`status` IN ("SENDING", "SENT", "UNCERTAIN", "WAITING"), `status`, VALUES(`status`)),
+                `status` = IF(`status` IN ("SENDING", "SENT", "UNCERTAIN", "WAITING", "FINAL"), `status`, VALUES(`status`)),
                 `updated_at` = NOW(),
                 `last_request_at` = NOW()',
             [$id_documento, $provider, $filename, $xml_hash, self::STATUS_SENDING]
@@ -144,7 +197,7 @@ class ProviderTransactionRepository
     {
         $this->update($id_documento, $provider, $xml_hash, [
             'status' => self::STATUS_UNCERTAIN,
-            'last_error' => $message,
+            'last_error' => substr($message, 0, 65535),
             'last_response_at' => date('Y-m-d H:i:s'),
         ]);
     }
@@ -153,7 +206,7 @@ class ProviderTransactionRepository
     {
         $this->update($id_documento, $provider, $xml_hash, [
             'status' => self::STATUS_FAILED,
-            'last_error' => $message,
+            'last_error' => substr($message, 0, 65535),
             'last_response_at' => date('Y-m-d H:i:s'),
         ]);
     }
