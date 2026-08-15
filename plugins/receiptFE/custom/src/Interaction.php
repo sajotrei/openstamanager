@@ -5,6 +5,7 @@ namespace Plugins\ReceiptFE;
 use API\Services;
 use Models\Cache;
 use Plugins\ExportFE\Providers\ProviderFactory;
+use Util\XML;
 
 class Interaction extends Services
 {
@@ -90,6 +91,11 @@ class Interaction extends Services
             $content = static::getProvider()->getReceipt($name);
 
             if ($content !== null && $content !== '') {
+                // Le ricevute non firmate devono essere XML parsabile prima di
+                // essere persistite nella directory di importazione.
+                if (str_ends_with(strtolower($name), '.xml')) {
+                    XML::read($content);
+                }
                 Ricevuta::store($name, $content);
             }
         }
