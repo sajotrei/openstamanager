@@ -92,33 +92,28 @@ class HostingSolutionsProvider implements ProviderInterface
             return $this->notConfigured() + ['results' => []];
         }
 
-        $scenario = ProviderSettings::hostingSolutionsMockScenario();
-
-        if ($scenario === self::SCENARIO_DELIVERED) {
+        $code = $this->receiptCodeForScenario();
+        if ($code === null) {
             return [
-                'code' => 200,
-                'results' => ['IT00000000000_TEST_RC.xml'],
+                'code' => 204,
+                'message' => tr('Nessuna ricevuta disponibile'),
+                'results' => [],
             ];
         }
 
-        if ($scenario === self::SCENARIO_NOT_DELIVERED) {
+        try {
+            $payload = InvoicePayload::fromInvoiceId($id_record);
+        } catch (\UnexpectedValueException $e) {
             return [
-                'code' => 200,
-                'results' => ['IT00000000000_TEST_MC.xml'],
-            ];
-        }
-
-        if ($scenario === self::SCENARIO_REJECTED) {
-            return [
-                'code' => 200,
-                'results' => ['IT00000000000_TEST_NS.xml'],
+                'code' => $e->getCode() ?: 400,
+                'message' => $e->getMessage() ?: tr('Fattura elettronica non valida'),
+                'results' => [],
             ];
         }
 
         return [
-            'code' => 204,
-            'message' => tr('Nessuna ricevuta disponibile'),
-            'results' => [],
+            'code' => 200,
+            'results' => [$this->receiptName($payload->filename, $code)],
         ];
     }
 
@@ -128,9 +123,23 @@ class HostingSolutionsProvider implements ProviderInterface
             return [];
         }
 
-        return $this->getInvoiceReceipts(0)['results']
-            ? array_map(fn ($name) => ['name' => $name], $this->getInvoiceReceipts(0)['results'])
-            : [];
+        $code = $this->receiptCodeForScenario();
+        if ($code === null) {
+            return [];
+        }
+
+        $list = [];
+        foreach ($this->transactions->openForProvider(ProviderFactory::HOSTING_SOLUTIONS) as $transaction) {
+            if (empty($transaction['filename'])) {
+                continue;
+            }
+
+            $list[] = [
+                'name' => $this->receiptName((string) $transaction['filename'], $code),
+            ];
+        }
+
+        return $list;
     }
 
     public function getReceipt(string $name): ?string
@@ -240,17 +249,51 @@ class HostingSolutionsProvider implements ProviderInterface
         ];
     }
 
+    private function receiptCodeForScenario(): ?string
+    {
+        return match (ProviderSettings::hostingSolutionsMockScenario()) {
+            self::SCENARIO_DELIVERED => 'RC',
+            self::SCENARIO_NOT_DELIVERED => 'MC',
+            self::SCENARIO_REJECTED => 'NS',
+            default => null,
+        };
+    }
+
+    private function receiptName(string $invoice_filename, string $code): string
+    {
+        $stem = pathinfo(basename($invoice_filename), PATHINFO_FILENAME);
+
+        return $stem.'_'.$code.'.xml';
+    }
+
     private function mockReceipt(string $name): string
     {
-        $code = 'RC';
+        $code = str_contains($name, '_MC') ? 'MC' : (str_contains($name, '_NS') ? 'NS' : 'RC');
+        $date = date('c');
 
-        if (str_contains($name, '_MC')) {
-            $code = 'MC';
-        } elseif (str_contains($name, '_NS')) {
-            $code = 'NS';
+        if ($code === 'RC') {
+            $xml = '<?xml version="1.0" encoding="UTF-8"?>'
+                .'<RicevutaConsegna>'
+                .'<DataOraRicezione>'.$date.'</DataOraRicezione>'
+                .'<Destinatario><Descrizione>Ricevuta di consegna simulata</Descrizione></Destinatario>'
+                .'</RicevutaConsegna>';
+        } elseif ($code === 'MC') {
+            $xml = '<?xml version="1.0" encoding="UTF-8"?>'
+                .'<MancataConsegna>'
+                .'<DataOraRicezione>'.$date.'</DataOraRicezione>'
+                .'<Descrizione>Mancata consegna simulata</Descrizione>'
+                .'</MancataConsegna>';
+        } else {
+            $xml = '<?xml version="1.0" encoding="UTF-8"?>'
+                .'<NotificaScarto>'
+                .'<DataOraRicezione>'.$date.'</DataOraRicezione>'
+                .'<ListaErrori><Errore>'
+                .'<Codice>MOCK01</Codice>'
+                .'<Descrizione>Scarto simulato dal provider Hosting Solutions</Descrizione>'
+                .'<Suggerimento>Correggere il documento prima di un nuovo invio</Suggerimento>'
+                .'</Errore></ListaErrori>'
+                .'</NotificaScarto>';
         }
-
-        $xml = '<?xml version="1.0" encoding="UTF-8"?><'.$code.'></'.$code.'>';
 
         return Base64Document::decode(base64_encode($xml));
     }
