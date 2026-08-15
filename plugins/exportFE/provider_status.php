@@ -16,8 +16,8 @@ if ($is_hs) {
 }
 
 $mode = $is_hs
-    ? (ProviderSettings::isHostingSolutionsMockEnabled() ? tr('Simulazione') : tr('API reale'))
-    : tr('Nativo OSMCloud');
+    ? (ProviderSettings::isHostingSolutionsMockEnabled() ? tr('Simulazione') : tr('API reale non disponibile'))
+    : 'OSMCloud';
 
 $repository = new ProviderTransactionRepository();
 $tracking_available = $repository->tableAvailable();
@@ -93,7 +93,7 @@ $pending = $counts[ProviderTransactionRepository::STATUS_SENDING]
                         <span class="info-box-icon bg-light"><i class="fa fa-clock-o text-warning"></i></span>
                         <div class="info-box-content">
                             <span class="info-box-text"><?php echo tr('Automazione'); ?></span>
-                            <span class="info-box-number"><?php echo tr('Task native OSM'); ?></span>
+                            <span class="info-box-number"><?php echo tr('Schedulazione automatica'); ?></span>
                         </div>
                     </div>
                 </div>
@@ -117,7 +117,7 @@ $pending = $counts[ProviderTransactionRepository::STATUS_SENDING]
             <?php } elseif ($is_hs) { ?>
                 <div class="alert alert-warning mb-2">
                     <i class="fa fa-exclamation-triangle mr-1"></i>
-                    <?php echo tr('La modalità API reale Hosting Solutions resta disabilitata finché non sono configurate e validate le API ufficiali.'); ?>
+                    <?php echo tr('La modalità API reale Hosting Solutions non è ancora disponibile. Riattivare la simulazione per eseguire i test.'); ?>
                 </div>
             <?php } ?>
 
@@ -132,7 +132,7 @@ $pending = $counts[ProviderTransactionRepository::STATUS_SENDING]
 
             <div class="small text-muted mb-2">
                 <i class="fa fa-calendar-check-o mr-1"></i>
-                <?php echo tr('Invio, acquisizione ricevute e ricerca fatture passive utilizzano la schedulazione standard di OpenSTAManager.'); ?>
+                <?php echo tr('Invio, acquisizione ricevute e ricerca fatture passive vengono gestiti automaticamente dalla schedulazione del gestionale.'); ?>
             </div>
 
             <div class="d-flex flex-wrap small text-muted mt-2">
