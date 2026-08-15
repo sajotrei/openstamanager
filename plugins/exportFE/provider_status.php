@@ -11,6 +11,7 @@ if ($is_hs) {
     $enabled = ProviderSettings::isHostingSolutionsEnabled()
         && ProviderSettings::isHostingSolutionsMockEnabled();
 } else {
+    // Stato locale: l'apertura delle impostazioni non deve effettuare chiamate remote.
     $enabled = !empty(setting('OSMCloud Services API Token'));
 }
 
@@ -48,7 +49,6 @@ if ($tracking_available) {
 $provider_label = $is_hs ? 'Hosting Solutions' : 'OSMCloud';
 $status_label = $enabled ? tr('Configurato') : tr('Da configurare');
 $status_class = $enabled ? 'success' : ($is_hs ? 'warning' : 'secondary');
-$polling = ProviderSettings::pollingMinutes();
 $pending = $counts[ProviderTransactionRepository::STATUS_SENDING]
     + $counts[ProviderTransactionRepository::STATUS_WAITING]
     + $counts[ProviderTransactionRepository::STATUS_UNCERTAIN];
@@ -92,8 +92,8 @@ $pending = $counts[ProviderTransactionRepository::STATUS_SENDING]
                     <div class="info-box shadow-none border">
                         <span class="info-box-icon bg-light"><i class="fa fa-clock-o text-warning"></i></span>
                         <div class="info-box-content">
-                            <span class="info-box-text"><?php echo tr('Polling'); ?></span>
-                            <span class="info-box-number"><?php echo $polling; ?> min</span>
+                            <span class="info-box-text"><?php echo tr('Automazione'); ?></span>
+                            <span class="info-box-number"><?php echo tr('Task native OSM'); ?></span>
                         </div>
                     </div>
                 </div>
@@ -102,7 +102,7 @@ $pending = $counts[ProviderTransactionRepository::STATUS_SENDING]
                     <div class="info-box shadow-none border">
                         <span class="info-box-icon bg-light"><i class="fa fa-list-alt text-secondary"></i></span>
                         <div class="info-box-content">
-                            <span class="info-box-text"><?php echo tr('Transazioni in attesa'); ?></span>
+                            <span class="info-box-text"><?php echo tr('Transazioni aperte'); ?></span>
                             <span class="info-box-number"><?php echo $tracking_available ? $pending : '—'; ?></span>
                         </div>
                     </div>
@@ -129,6 +129,11 @@ $pending = $counts[ProviderTransactionRepository::STATUS_SENDING]
                     ]); ?>
                 </div>
             <?php } ?>
+
+            <div class="small text-muted mb-2">
+                <i class="fa fa-calendar-check-o mr-1"></i>
+                <?php echo tr('Invio, acquisizione ricevute e ricerca fatture passive utilizzano la schedulazione standard di OpenSTAManager.'); ?>
+            </div>
 
             <div class="d-flex flex-wrap small text-muted mt-2">
                 <span class="mr-3"><strong><?php echo tr('In attesa'); ?>:</strong> <?php echo $tracking_available ? $counts[ProviderTransactionRepository::STATUS_WAITING] : '—'; ?></span>
