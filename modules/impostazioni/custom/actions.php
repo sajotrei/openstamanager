@@ -2,8 +2,7 @@
 
 /**
  * Estensione minimale del salvataggio impostazioni per il gateway FE.
- * Il salvataggio vero resta nel controller originale; qui sincronizziamo solo
- * le task FE quando Hosting Solutions è il provider selezionato.
+ * Il controller originale continua a gestire validazione, risposta JSON e flash.
  */
 
 include dirname(__DIR__).'/actions.php';
@@ -15,7 +14,6 @@ if (filter('op') !== 'salva' || empty($result) || empty($impostazione)) {
 $relevant = [
     'Fatturazione Elettronica Provider',
     'Hosting Solutions FE Abilitato',
-    'Hosting Solutions FE Modalita mock',
     'Hosting Solutions FE Mock Scenario',
 ];
 
@@ -23,52 +21,60 @@ if (!in_array((string) $impostazione->nome, $relevant, true)) {
     return;
 }
 
-$provider = (string) setting('Fatturazione Elettronica Provider');
-
-// Non modifichiamo la politica delle task quando viene usato OSMCloud:
-// in quel caso resta valido il comportamento configurato dall'installazione.
-if ($provider !== 'hosting_solutions') {
-    return;
-}
-
-$enabled_value = setting('Hosting Solutions FE Abilitato');
-$mock_value = setting('Hosting Solutions FE Modalita mock');
+// Lettura diretta dal DB per non dipendere da cache delle impostazioni durante
+// lo stesso request in cui il valore è appena stato modificato.
+$provider = (string) (\Models\Setting::where('nome', 'Fatturazione Elettronica Provider')->value('valore') ?? 'osmcloud');
+$enabled_value = \Models\Setting::where('nome', 'Hosting Solutions FE Abilitato')->value('valore');
 $hs_enabled = in_array($enabled_value, [true, 1, '1', 'true'], true);
-$mock_enabled = in_array($mock_value, [true, 1, '1', 'true'], true);
-$should_run = $hs_enabled && $mock_enabled;
 
-$task_names = [
-    'Hook Invio Fatture Elettroniche',
-    'Importazione automatica Ricevute FE',
-    'Hook Importazione Fatture Elettroniche',
-];
-
-foreach ($task_names as $task_name) {
-    $task = database()->fetchOne('SELECT `id`, `enabled` FROM `zz_tasks` WHERE `name` = ? LIMIT 1', [$task_name]);
-    if (empty($task)) {
-        continue;
-    }
-
-    $values = [
-        'enabled' => $should_run ? 1 : 0,
+if ($provider === 'hosting_solutions' && $hs_enabled) {
+    $tasks = [
+        [
+            'class' => 'Plugins\\ExportFE\\InvoiceHookTask',
+            'name' => 'Hook Invio Fatture Elettroniche',
+        ],
+        [
+            'class' => 'Plugins\\ReceiptFE\\ReceiptTask',
+            'name' => 'Importazione automatica Ricevute FE',
+        ],
+        [
+            'class' => 'Plugins\\ImportFE\\InvoiceHookTask',
+            'name' => 'Hook Importazione Fatture Elettroniche',
+        ],
     ];
 
-    // Alla riattivazione lasciamo che cron.php ricalcoli la prima esecuzione
-    // secondo l'espressione già configurata nel task nativo.
-    if ($should_run && empty($task['enabled'])) {
-        $values['next_execution_at'] = null;
-    }
+    foreach ($tasks as $definition) {
+        $task = database()->fetchOne(
+            'SELECT `id`, `enabled` FROM `zz_tasks` WHERE `class` = ? OR `name` = ? ORDER BY (`class` = ?) DESC LIMIT 1',
+            [$definition['class'], $definition['name'], $definition['class']]
+        );
 
-    database()->table('zz_tasks')->where('id', $task['id'])->update($values);
+        if (empty($task)) {
+            continue;
+        }
+
+        $values = ['enabled' => 1];
+
+        // Alla riattivazione la rendiamo subito eleggibile; dopo l'esecuzione
+        // la normale classe Task ricalcolerà la successiva data dal cron nativo.
+        if (empty($task['enabled'])) {
+            $values['next_execution_at'] = date('Y-m-d H:i:s');
+        }
+
+        database()->table('zz_tasks')->where('id', $task['id'])->update($values);
+    }
 }
 
-// Ogni nuovo avvio dello scenario passivo deve rendere nuovamente disponibile
-// la fixture per consentire test ripetibili del ciclo ricezione/import/conferma.
-if ((string) $impostazione->nome === 'Hosting Solutions FE Mock Scenario'
-    && (string) setting('Hosting Solutions FE Mock Scenario') === 'passive_invoice') {
-    $cache = \Models\Cache::where('name', 'Hosting Solutions FE Mock Passive Processed')->first();
-    if (empty($cache)) {
-        $cache = \Models\Cache::build('Hosting Solutions FE Mock Passive Processed');
+// Ogni nuova selezione dello scenario passivo rende nuovamente disponibile la
+// fixture, così il ciclo lista -> import -> conferma può essere ripetuto nei test.
+if ((string) $impostazione->nome === 'Hosting Solutions FE Mock Scenario') {
+    $scenario = (string) \Models\Setting::where('nome', 'Hosting Solutions FE Mock Scenario')->value('valore');
+
+    if ($scenario === 'passive_invoice') {
+        $cache = \Models\Cache::where('name', 'Hosting Solutions FE Mock Passive Processed')->first();
+        if (empty($cache)) {
+            $cache = \Models\Cache::build('Hosting Solutions FE Mock Passive Processed');
+        }
+        $cache->set([]);
     }
-    $cache->set(false);
 }
