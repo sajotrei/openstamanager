@@ -45,8 +45,9 @@ class ProviderTransactionRepository
     }
 
     /**
-     * Restituisce le transazioni aperte del provider, utile per riconciliazione
-     * e per il provider mock delle ricevute.
+     * Restituisce le transazioni aperte del provider. Il risultato viene usato
+     * per riconciliazione e dal provider mock delle ricevute, non come seconda
+     * coda di polling rispetto alle task native OSM.
      *
      * @return array<int,array<string,mixed>>
      */
@@ -66,6 +67,25 @@ class ProviderTransactionRepository
              LIMIT '.$limit,
             [$provider, self::STATUS_SENT, self::STATUS_WAITING, self::STATUS_UNCERTAIN]
         );
+    }
+
+    /**
+     * Individua la transazione aperta associata a una ricevuta SDI usando il
+     * nome XML originariamente trasmesso. Le ricevute standard mantengono il
+     * nome fattura come prefisso (es. IT..._00001_RC.xml).
+     */
+    public function findOpenByReceiptFilename(string $provider, string $receipt_filename): ?array
+    {
+        $receipt = pathinfo(basename($receipt_filename), PATHINFO_FILENAME);
+
+        foreach ($this->openForProvider($provider, 250) as $transaction) {
+            $invoice = pathinfo(basename((string) ($transaction['filename'] ?? '')), PATHINFO_FILENAME);
+            if ($invoice !== '' && ($receipt === $invoice || str_starts_with($receipt, $invoice.'_'))) {
+                return $transaction;
+            }
+        }
+
+        return null;
     }
 
     public function start(int $id_documento, string $provider, string $filename, string $xml_hash): void
@@ -116,7 +136,8 @@ class ProviderTransactionRepository
             'remote_id' => $remote_id,
             'remote_status' => $remote_status,
             'last_response_at' => date('Y-m-d H:i:s'),
-            'next_poll_at' => date('Y-m-d H:i:s', time() + ProviderSettings::pollingMinutes() * 60),
+            'next_poll_at' => null,
+            'last_error' => null,
         ]);
     }
 
@@ -126,7 +147,7 @@ class ProviderTransactionRepository
             'status' => self::STATUS_UNCERTAIN,
             'last_error' => $message,
             'last_response_at' => date('Y-m-d H:i:s'),
-            'next_poll_at' => date('Y-m-d H:i:s', time() + ProviderSettings::pollingMinutes() * 60),
+            'next_poll_at' => null,
         ]);
     }
 
@@ -140,45 +161,6 @@ class ProviderTransactionRepository
         ]);
     }
 
-    /**
-     * Restituisce le transazioni che possono essere interrogate dal task di polling.
-     *
-     * @return array<int,array<string,mixed>>
-     */
-    public function dueForPolling(string $provider, int $limit = 25): array
-    {
-        if (!$this->tableAvailable()) {
-            return [];
-        }
-
-        $limit = max(1, min(100, $limit));
-
-        return database()->fetchArray(
-            'SELECT * FROM `'.self::TABLE.'`
-             WHERE `provider` = ?
-               AND `status` IN (?, ?)
-               AND (`next_poll_at` IS NULL OR `next_poll_at` <= NOW())
-             ORDER BY COALESCE(`next_poll_at`, `updated_at`) ASC, `id` ASC
-             LIMIT '.$limit,
-            [$provider, self::STATUS_WAITING, self::STATUS_UNCERTAIN]
-        );
-    }
-
-    public function scheduleNextPoll(int $id_documento, string $provider, string $xml_hash, ?string $remote_status = null): void
-    {
-        $values = [
-            'status' => self::STATUS_WAITING,
-            'last_response_at' => date('Y-m-d H:i:s'),
-            'next_poll_at' => date('Y-m-d H:i:s', time() + ProviderSettings::pollingMinutes() * 60),
-        ];
-
-        if ($remote_status !== null) {
-            $values['remote_status'] = $remote_status;
-        }
-
-        $this->update($id_documento, $provider, $xml_hash, $values);
-    }
-
     public function markFinal(int $id_documento, string $provider, string $xml_hash, ?string $remote_status = null): void
     {
         $values = [
@@ -189,19 +171,31 @@ class ProviderTransactionRepository
         ];
 
         if ($remote_status !== null) {
-            $values['remote_status'] = $remote_status;
+            $values['remote_status'] = substr($remote_status, 0, 64);
         }
 
         $this->update($id_documento, $provider, $xml_hash, $values);
     }
 
-    public function recordPollingError(int $id_documento, string $provider, string $xml_hash, string $message): void
+    /**
+     * Chiude il tracking solo dopo che Ricevuta::process() ha completato il
+     * salvataggio nativo e richiama processReceipt() sul provider.
+     */
+    public function markFinalByReceiptFilename(string $provider, string $receipt_filename, ?string $remote_status = null): bool
     {
-        $this->update($id_documento, $provider, $xml_hash, [
-            'last_error' => $message,
-            'last_response_at' => date('Y-m-d H:i:s'),
-            'next_poll_at' => date('Y-m-d H:i:s', time() + ProviderSettings::pollingMinutes() * 60),
-        ]);
+        $transaction = $this->findOpenByReceiptFilename($provider, $receipt_filename);
+        if (!$transaction) {
+            return false;
+        }
+
+        $this->markFinal(
+            (int) $transaction['id_documento'],
+            $provider,
+            (string) $transaction['xml_hash'],
+            $remote_status
+        );
+
+        return true;
     }
 
     public function update(int $id_documento, string $provider, string $xml_hash, array $values): void
