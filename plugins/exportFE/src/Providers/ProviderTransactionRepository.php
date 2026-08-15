@@ -44,6 +44,30 @@ class ProviderTransactionRepository
         return $row ?: null;
     }
 
+    /**
+     * Restituisce le transazioni aperte del provider, utile per riconciliazione
+     * e per il provider mock delle ricevute.
+     *
+     * @return array<int,array<string,mixed>>
+     */
+    public function openForProvider(string $provider, int $limit = 100): array
+    {
+        if (!$this->tableAvailable()) {
+            return [];
+        }
+
+        $limit = max(1, min(250, $limit));
+
+        return database()->fetchArray(
+            'SELECT * FROM `'.self::TABLE.'`
+             WHERE `provider` = ?
+               AND `status` IN (?, ?, ?)
+             ORDER BY `updated_at` ASC, `id` ASC
+             LIMIT '.$limit,
+            [$provider, self::STATUS_SENT, self::STATUS_WAITING, self::STATUS_UNCERTAIN]
+        );
+    }
+
     public function start(int $id_documento, string $provider, string $filename, string $xml_hash): void
     {
         if (!$this->tableAvailable()) {
