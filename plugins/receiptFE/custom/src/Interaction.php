@@ -23,14 +23,31 @@ class Interaction extends Services
         $list = self::getRemoteList();
         $result = self::getFileList($list);
 
-        Cache::where('name', 'Ricevute Elettroniche')->first()->set($result);
+        $cache = Cache::where('name', 'Ricevute Elettroniche')->first();
+        if (empty($cache)) {
+            $cache = Cache::build('Ricevute Elettroniche');
+        }
+        $cache->set($result);
 
         return $result;
     }
 
     public static function getRemoteList()
     {
-        return self::isEnabled() ? static::getProvider()->getReceiptList() : [];
+        if (!self::isEnabled()) {
+            return [];
+        }
+
+        $result = [];
+        foreach ((array) static::getProvider()->getReceiptList() as $item) {
+            $name = is_array($item) ? ($item['name'] ?? '') : $item;
+            $name = self::sanitizeRemoteName((string) $name);
+            if ($name !== null) {
+                $result[] = ['name' => $name];
+            }
+        }
+
+        return $result;
     }
 
     public static function getFileList($list = [])
@@ -39,18 +56,20 @@ class Interaction extends Services
         $directory = Ricevuta::getImportDirectory();
 
         $files = glob($directory.'/*.xml*');
-        foreach ($files as $id => $file) {
-            $name = basename($file);
-            $pos = array_search($name, $names);
+        if (!empty($files) && is_array($files)) {
+            foreach ($files as $id => $file) {
+                $name = basename($file);
+                $pos = array_search($name, $names, true);
 
-            if ($pos === false) {
-                $list[] = [
-                    'id' => $id,
-                    'name' => $name,
-                    'file' => true,
-                ];
-            } else {
-                $list[$pos]['id'] = $id;
+                if ($pos === false) {
+                    $list[] = [
+                        'id' => $id,
+                        'name' => $name,
+                        'file' => true,
+                    ];
+                } else {
+                    $list[$pos]['id'] = $id;
+                }
             }
         }
 
@@ -59,6 +78,11 @@ class Interaction extends Services
 
     public static function getReceipt($name)
     {
+        $name = self::sanitizeRemoteName((string) $name);
+        if ($name === null) {
+            throw new \UnexpectedValueException(tr('Nome ricevuta non valido'));
+        }
+
         $directory = Ricevuta::getImportDirectory();
         $file = $directory.'/'.$name;
 
@@ -75,6 +99,30 @@ class Interaction extends Services
 
     public static function processReceipt($filename)
     {
+        $filename = self::sanitizeRemoteName((string) $filename);
+        if ($filename === null) {
+            return tr('Nome ricevuta non valido');
+        }
+
         return static::getProvider()->processReceipt($filename);
+    }
+
+    private static function sanitizeRemoteName(string $name): ?string
+    {
+        $name = trim(str_replace('\\', '/', $name));
+        if ($name === '' || basename($name) !== $name) {
+            return null;
+        }
+
+        if (!preg_match('/^[A-Za-z0-9._-]+$/', $name)) {
+            return null;
+        }
+
+        $lower = strtolower($name);
+        if (!str_ends_with($lower, '.xml') && !str_ends_with($lower, '.zip')) {
+            return null;
+        }
+
+        return $name;
     }
 }
