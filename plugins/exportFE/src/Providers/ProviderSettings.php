@@ -8,7 +8,6 @@ class ProviderSettings
     public const SETTING_HS_ENABLED = 'Hosting Solutions FE Abilitato';
     public const SETTING_HS_MOCK = 'Hosting Solutions FE Modalita mock';
     public const SETTING_HS_MOCK_SCENARIO = 'Hosting Solutions FE Mock Scenario';
-    public const SETTING_HS_POLL_MINUTES = 'Hosting Solutions FE Minuti polling';
 
     public static function selectedProvider(): string
     {
@@ -51,13 +50,6 @@ class ProviderSettings
             HostingSolutionsProvider::SCENARIO_PASSIVE,
             HostingSolutionsProvider::SCENARIO_DUPLICATE,
         ];
-    }
-
-    public static function pollingMinutes(): int
-    {
-        $minutes = (int) self::get(self::SETTING_HS_POLL_MINUTES, 30);
-
-        return min(1440, max(15, $minutes));
     }
 
     private static function enabled(string $name): bool
