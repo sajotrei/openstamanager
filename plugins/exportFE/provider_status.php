@@ -63,23 +63,27 @@ try {
         $task_rows[$row['name']] = $row;
     }
 
-    foreach ($task_names as $task_name => $label) {
-        if (empty($task_rows[$task_name])) {
-            $task_issues[] = $label.': '.tr('task mancante');
-        } elseif (empty($task_rows[$task_name]['enabled'])) {
-            $task_issues[] = $label.': '.tr('disabilitata');
+    if ($enabled) {
+        foreach ($task_names as $task_name => $label) {
+            if (empty($task_rows[$task_name])) {
+                $task_issues[] = $label.': '.tr('task mancante');
+            } elseif (empty($task_rows[$task_name]['enabled'])) {
+                $task_issues[] = $label.': '.tr('disabilitata');
+            }
         }
     }
 } catch (\Throwable) {
-    $task_issues[] = tr('Impossibile verificare la schedulazione automatica');
+    if ($enabled) {
+        $task_issues[] = tr('Impossibile verificare la schedulazione automatica');
+    }
 }
 
-$scheduler_ok = empty($task_issues);
+$scheduler_ok = $enabled && empty($task_issues);
 $provider_label = $is_hs ? 'Hosting Solutions' : 'OSMCloud';
 $status_label = $enabled ? tr('Configurato') : tr('Da configurare');
 $status_class = $enabled ? 'success' : ($is_hs ? 'warning' : 'secondary');
-$scheduler_label = $scheduler_ok ? tr('Attiva') : tr('Da verificare');
-$scheduler_icon_class = $scheduler_ok ? 'text-success' : 'text-warning';
+$scheduler_label = !$enabled ? tr('Non attiva') : ($scheduler_ok ? tr('Attiva') : tr('Da verificare'));
+$scheduler_icon_class = !$enabled ? 'text-secondary' : ($scheduler_ok ? 'text-success' : 'text-warning');
 $pending = $counts[ProviderTransactionRepository::STATUS_SENDING]
     + $counts[ProviderTransactionRepository::STATUS_WAITING]
     + $counts[ProviderTransactionRepository::STATUS_UNCERTAIN];
@@ -140,7 +144,7 @@ $pending = $counts[ProviderTransactionRepository::STATUS_SENDING]
                 </div>
             </div>
 
-            <?php if (!$scheduler_ok) { ?>
+            <?php if ($enabled && !$scheduler_ok) { ?>
                 <div class="alert alert-warning mb-2">
                     <i class="fa fa-clock-o mr-1"></i>
                     <?php echo tr('Verificare la schedulazione automatica').': '.htmlentities(implode(' · ', $task_issues)); ?>
