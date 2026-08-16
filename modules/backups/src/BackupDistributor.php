@@ -42,24 +42,29 @@ class BackupDistributor
     }
 
     /**
-     * Verifica lettura e scrittura di una singola destinazione con un file temporaneo.
+     * Verifica scrittura, lettura ed eliminazione di una singola destinazione.
      */
     public static function test(BackupDestination $destination): array
     {
-        $filesystem = self::getFilesystem($destination);
         $directory = self::normalizeDirectory($destination->path);
         $filename = '.osm-backup-test-'.bin2hex(random_bytes(8)).'.tmp';
         $path = self::joinPath($directory, $filename);
+        $payload = 'OpenSTAManager backup destination test';
         $stream = fopen('php://temp', 'w+b');
+        $filesystem = null;
 
         if ($stream === false) {
-            throw new \RuntimeException(tr('Impossibile creare il file temporaneo di test.'));
+            return [
+                'success' => false,
+                'message' => tr('Impossibile creare il file temporaneo di test.'),
+            ];
         }
 
-        fwrite($stream, 'OpenSTAManager backup destination test');
+        fwrite($stream, $payload);
         rewind($stream);
 
         try {
+            $filesystem = self::getFilesystem($destination);
             self::ensureDirectory($filesystem, $directory);
             $filesystem->writeStream($path, $stream);
 
@@ -67,18 +72,31 @@ class BackupDistributor
                 throw new \RuntimeException(tr('Il file di test non risulta presente sulla destinazione.'));
             }
 
+            if ($filesystem->fileSize($path) !== strlen($payload)) {
+                throw new \RuntimeException(tr('La dimensione del file di test non corrisponde al contenuto inviato.'));
+            }
+
+            if ($filesystem->read($path) !== $payload) {
+                throw new \RuntimeException(tr('Il file di test non è leggibile correttamente dalla destinazione.'));
+            }
+
             $filesystem->delete($path);
+            if ($filesystem->fileExists($path)) {
+                throw new \RuntimeException(tr('Il file di test non può essere eliminato dalla destinazione.'));
+            }
 
             return [
                 'success' => true,
-                'message' => tr('Connessione e permessi verificati correttamente.'),
+                'message' => tr('Connessione e permessi di lettura, scrittura ed eliminazione verificati correttamente.'),
             ];
         } catch (Throwable $e) {
-            try {
-                if ($filesystem->fileExists($path)) {
-                    $filesystem->delete($path);
+            if ($filesystem !== null) {
+                try {
+                    if ($filesystem->fileExists($path)) {
+                        $filesystem->delete($path);
+                    }
+                } catch (Throwable) {
                 }
-            } catch (Throwable) {
             }
 
             return [
