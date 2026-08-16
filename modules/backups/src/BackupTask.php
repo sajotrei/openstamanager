@@ -20,7 +20,6 @@
 
 namespace Modules\Backups;
 
-use Backup;
 use Tasks\Manager;
 
 /**
@@ -41,11 +40,13 @@ class BackupTask extends Manager
         ];
 
         if (setting('Backup automatico') && !\Backup::isDailyComplete()) {
+            $before = \Backup::getList();
             $created = \Backup::daily();
 
             if ($created) {
-                $backups = \Backup::getList();
-                $backup = end($backups);
+                $after = \Backup::getList();
+                $created_backups = array_values(array_diff($after, $before));
+                $backup = end($created_backups) ?: end($after);
                 $distribution_results = $backup ? BackupDistributor::distribute($backup) : [];
                 $failed_destinations = array_filter($distribution_results, fn ($item) => !$item['success']);
 
