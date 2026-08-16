@@ -17,11 +17,6 @@ use Throwable;
 
 class BackupDistributor
 {
-    /**
-     * Distribuisce un backup locale verso tutte le destinazioni abilitate.
-     *
-     * Il fallimento di una destinazione non interrompe le successive.
-     */
     public static function distribute(string $backup_path): array
     {
         if (!is_file($backup_path) || !is_readable($backup_path)) {
@@ -41,12 +36,10 @@ class BackupDistributor
         return $results;
     }
 
-    /**
-     * Verifica scrittura, lettura ed eliminazione di una singola destinazione.
-     */
     public static function test(BackupDestination $destination): array
     {
         try {
+            self::assertSecondaryDestination($destination);
             $directory = self::normalizeDirectory($destination->path);
         } catch (Throwable $e) {
             return [
@@ -116,9 +109,6 @@ class BackupDistributor
         }
     }
 
-    /**
-     * Distribuisce il backup verso una singola destinazione.
-     */
     public static function distributeTo(string $backup_path, BackupDestination $destination): array
     {
         $adapter = $destination->adapter;
@@ -129,8 +119,10 @@ class BackupDistributor
             'message' => '',
         ];
 
-        if (empty($adapter)) {
-            $result['message'] = tr('Adattatore di archiviazione non disponibile.');
+        try {
+            self::assertSecondaryDestination($destination);
+        } catch (Throwable $e) {
+            $result['message'] = $e->getMessage();
 
             return $result;
         }
@@ -150,7 +142,6 @@ class BackupDistributor
 
         $filesystem = null;
         $temporary_path = null;
-        $remote_path = null;
 
         try {
             $filesystem = self::getFilesystem($destination);
@@ -210,9 +201,6 @@ class BackupDistributor
         return $result;
     }
 
-    /**
-     * Normalizza e valida il percorso relativo della destinazione.
-     */
     public static function normalizeDirectory(?string $directory): string
     {
         $directory = str_replace('\\', '/', trim((string) $directory));
@@ -236,14 +224,24 @@ class BackupDistributor
         return implode('/', $segments);
     }
 
-    protected static function getFilesystem(BackupDestination $destination): OSMFilesystem
+    protected static function assertSecondaryDestination(BackupDestination $destination): void
     {
-        $adapter_config = $destination->adapter;
-        if (empty($adapter_config)) {
+        $adapter = $destination->adapter;
+        if (empty($adapter)) {
             throw new \RuntimeException(tr('Adattatore di archiviazione non disponibile.'));
         }
 
+        $primary_adapter = \Backup::getStorageAdapter();
+        if (!empty($primary_adapter) && (int) $primary_adapter->id === (int) $adapter->id) {
+            throw new \RuntimeException(tr('La destinazione secondaria coincide con l’adattatore usato per il backup principale.'));
+        }
+    }
+
+    protected static function getFilesystem(BackupDestination $destination): OSMFilesystem
+    {
+        $adapter_config = $destination->adapter;
         $class = $adapter_config->class;
+
         if (empty($class) || !class_exists($class)) {
             throw new \RuntimeException(tr('Classe dell’adattatore di archiviazione non disponibile.'));
         }
