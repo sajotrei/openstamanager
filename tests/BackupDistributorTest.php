@@ -38,11 +38,13 @@ class BackupDistributorTest extends TestCase
     {
         $source = $this->createBackup('OSM backup 2026-08-17 00_00_01 FULL.zip', 'backup-content');
         $result = BackupDistributor::distributeTo($source, $this->destination());
+        $remote = base_dir().'/'.$this->root.'/remote/'.basename($source);
 
         $this->assertTrue($result['success']);
         $this->assertSame(strlen('backup-content'), $result['size']);
-        $this->assertFileExists(base_dir().'/'.$this->root.'/remote/'.basename($source));
-        $this->assertSame('backup-content', file_get_contents(base_dir().'/'.$this->root.'/remote/'.basename($source)));
+        $this->assertFileExists($remote);
+        $this->assertFileDoesNotExist($remote.'.part');
+        $this->assertSame('backup-content', file_get_contents($remote));
     }
 
     public function testRetentionRemovesOldestBackups(): void
@@ -75,6 +77,18 @@ class BackupDistributorTest extends TestCase
         $result = BackupDistributor::distributeTo($source, $destination);
 
         $this->assertFalse($result['success']);
+    }
+
+    public function testInvalidRelativePathIsRejected(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+
+        BackupDistributor::normalizeDirectory('../outside');
+    }
+
+    public function testBackslashesAreNormalized(): void
+    {
+        $this->assertSame('customer/backups', BackupDistributor::normalizeDirectory('customer\\backups'));
     }
 
     protected function destination(int $retention = 10): BackupDestination
