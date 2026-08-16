@@ -20,7 +20,9 @@
 
 include_once __DIR__.'/../../core.php';
 
+use Modules\Backups\BackupDestination;
 use Modules\Backups\BackupDistributor;
+use Modules\FileAdapters\FileAdapter;
 
 switch (filter('op')) {
     case 'getfile':
@@ -91,6 +93,92 @@ switch (filter('op')) {
             flash()->error(tr('Errore durante la creazione del backup!').' '.$e->getMessage());
         }
 
+        break;
+
+    case 'backup_destination_add':
+    case 'backup_destination_update':
+        $id = intval(post('id'));
+        $id_adapter = intval(post('id_adapter'));
+        $path = trim((string) post('path'), '/');
+        $retention = max(1, intval(post('retention')));
+        $enabled = intval(post('enabled')) === 1;
+
+        $adapter = FileAdapter::find($id_adapter);
+        $primary_adapter = Backup::getStorageAdapter();
+
+        if (empty($adapter)) {
+            flash()->error(tr('Adattatore di archiviazione non disponibile.'));
+            break;
+        }
+
+        if (!empty($primary_adapter) && (int) $primary_adapter->id === $id_adapter) {
+            flash()->error(tr('La destinazione secondaria non può coincidere con l’adattatore usato per il backup principale.'));
+            break;
+        }
+
+        $duplicate = BackupDestination::where('id_adapter', $id_adapter);
+        if ($id > 0) {
+            $duplicate->where('id', '!=', $id);
+        }
+
+        if ($duplicate->exists()) {
+            flash()->error(tr('Questo adattatore è già configurato come destinazione di backup.'));
+            break;
+        }
+
+        $destination = $id > 0 ? BackupDestination::find($id) : new BackupDestination();
+        if (empty($destination)) {
+            flash()->error(tr('Destinazione di backup non trovata.'));
+            break;
+        }
+
+        $destination->id_adapter = $id_adapter;
+        $destination->path = $path;
+        $destination->retention = $retention;
+        $destination->enabled = $enabled;
+        $destination->save();
+
+        flash()->info($id > 0 ? tr('Destinazione di backup aggiornata.') : tr('Destinazione di backup aggiunta.'));
+        break;
+
+    case 'backup_destination_toggle':
+        $destination = BackupDestination::find(intval(post('id')));
+        if (empty($destination)) {
+            flash()->error(tr('Destinazione di backup non trovata.'));
+            break;
+        }
+
+        $destination->enabled = !$destination->enabled;
+        $destination->save();
+        flash()->info(tr('Stato della destinazione di backup aggiornato.'));
+        break;
+
+    case 'backup_destination_delete':
+        $destination = BackupDestination::find(intval(post('id')));
+        if (empty($destination)) {
+            flash()->error(tr('Destinazione di backup non trovata.'));
+            break;
+        }
+
+        $destination->delete();
+        flash()->info(tr('Destinazione di backup eliminata.'));
+        break;
+
+    case 'backup_destination_test':
+        $destination = BackupDestination::find(intval(post('id')));
+        if (empty($destination)) {
+            flash()->error(tr('Destinazione di backup non trovata.'));
+            break;
+        }
+
+        $test = BackupDistributor::test($destination);
+        if ($test['success']) {
+            flash()->info($test['message']);
+        } else {
+            flash()->error(tr('Test destinazione fallito: _ERROR_', [
+                '_ERROR_' => $test['message'],
+            ]));
+        }
         break;
 
     case 'size':
