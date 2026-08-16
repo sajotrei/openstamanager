@@ -41,7 +41,24 @@ class BackupTask extends Manager
         ];
 
         if (setting('Backup automatico') && !\Backup::isDailyComplete()) {
-            \Backup::daily();
+            $created = \Backup::daily();
+
+            if ($created) {
+                $backups = \Backup::getList();
+                $backup = end($backups);
+                $distribution_results = $backup ? BackupDistributor::distribute($backup) : [];
+                $failed_destinations = array_filter($distribution_results, fn ($item) => !$item['success']);
+
+                if (!empty($failed_destinations)) {
+                    $names = array_map(fn ($item) => $item['adapter'] ?: tr('Destinazione sconosciuta'), $failed_destinations);
+                    $result = [
+                        'response' => 2,
+                        'message' => tr('Backup locale completato, ma alcune destinazioni secondarie non sono state aggiornate: _DESTINATIONS_', [
+                            '_DESTINATIONS_' => implode(', ', $names),
+                        ]),
+                    ];
+                }
+            }
         } elseif (!setting('Backup automatico')) {
             $result = [
                 'response' => 2,
