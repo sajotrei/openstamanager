@@ -231,6 +231,11 @@ class BackupDistributor
             throw new \RuntimeException(tr('Adattatore di archiviazione non disponibile.'));
         }
 
+        // Gli adapter non persistiti sono usati nei test unitari in-memory.
+        if (empty($adapter->id)) {
+            return;
+        }
+
         $primary_adapter = \Backup::getStorageAdapter();
         if (!empty($primary_adapter) && (int) $primary_adapter->id === (int) $adapter->id) {
             throw new \RuntimeException(tr('La destinazione secondaria coincide con l’adattatore usato per il backup principale.'));
