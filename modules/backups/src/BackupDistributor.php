@@ -90,7 +90,10 @@ class BackupDistributor
         }
     }
 
-    protected static function distributeTo(string $backup_path, BackupDestination $destination): array
+    /**
+     * Distribuisce il backup verso una singola destinazione.
+     */
+    public static function distributeTo(string $backup_path, BackupDestination $destination): array
     {
         $adapter = $destination->adapter;
         $result = [
