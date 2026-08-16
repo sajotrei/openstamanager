@@ -20,6 +20,8 @@
 
 include_once __DIR__.'/../../core.php';
 
+use Modules\Backups\BackupDistributor;
+
 switch (filter('op')) {
     case 'getfile':
         $number = filter('number');
@@ -68,7 +70,19 @@ switch (filter('op')) {
             $result = Backup::create($ignores);
 
             if ($result) {
+                $backups = Backup::getList();
+                $backup = end($backups);
+                $distribution_results = $backup ? BackupDistributor::distribute($backup) : [];
+                $failed_destinations = array_filter($distribution_results, fn ($item) => !$item['success']);
+
                 flash()->info(tr('Nuovo backup creato correttamente!'));
+
+                if (!empty($failed_destinations)) {
+                    $names = array_map(fn ($item) => $item['adapter'] ?: tr('Destinazione sconosciuta'), $failed_destinations);
+                    flash()->warning(tr('Backup locale creato, ma alcune destinazioni secondarie non sono state aggiornate: _DESTINATIONS_', [
+                        '_DESTINATIONS_' => implode(', ', $names),
+                    ]));
+                }
             } else {
                 $backup_dir = Backup::getDirectory();
                 flash()->error(tr('Errore durante la creazione del backup!').' '.str_replace('_DIR_', '"'.$backup_dir.'"', tr('Verifica che la cartella _DIR_ abbia i permessi di scrittura!')));
