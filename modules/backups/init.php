@@ -24,5 +24,3 @@ try {
     $backup_dir = Backup::getDirectory();
 } catch (UnexpectedValueException) {
 }
-
-include __DIR__.'/sections/destinations.php';
