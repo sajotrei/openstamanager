@@ -69,11 +69,13 @@ switch (filter('op')) {
         }
 
         try {
+            $before = Backup::getList();
             $result = Backup::create($ignores);
 
             if ($result) {
-                $backups = Backup::getList();
-                $backup = end($backups);
+                $after = Backup::getList();
+                $created_backups = array_values(array_diff($after, $before));
+                $backup = end($created_backups) ?: end($after);
                 $distribution_results = $backup ? BackupDistributor::distribute($backup) : [];
                 $failed_destinations = array_filter($distribution_results, fn ($item) => !$item['success']);
 
@@ -89,7 +91,7 @@ switch (filter('op')) {
                 $backup_dir = Backup::getDirectory();
                 flash()->error(tr('Errore durante la creazione del backup!').' '.str_replace('_DIR_', '"'.$backup_dir.'"', tr('Verifica che la cartella _DIR_ abbia i permessi di scrittura!')));
             }
-        } catch (Exception $e) {
+        } catch (Throwable $e) {
             flash()->error(tr('Errore durante la creazione del backup!').' '.$e->getMessage());
         }
 
@@ -99,9 +101,15 @@ switch (filter('op')) {
     case 'backup_destination_update':
         $id = intval(post('id'));
         $id_adapter = intval(post('id_adapter'));
-        $path = trim((string) post('path'), '/');
         $retention = max(1, intval(post('retention')));
         $enabled = intval(post('enabled')) === 1;
+
+        try {
+            $path = BackupDistributor::normalizeDirectory(post('path'));
+        } catch (Throwable $e) {
+            flash()->error($e->getMessage());
+            break;
+        }
 
         $adapter = FileAdapter::find($id_adapter);
         $primary_adapter = Backup::getStorageAdapter();
