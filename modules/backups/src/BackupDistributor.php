@@ -46,7 +46,15 @@ class BackupDistributor
      */
     public static function test(BackupDestination $destination): array
     {
-        $directory = self::normalizeDirectory($destination->path);
+        try {
+            $directory = self::normalizeDirectory($destination->path);
+        } catch (Throwable $e) {
+            return [
+                'success' => false,
+                'message' => $e->getMessage(),
+            ];
+        }
+
         $filename = '.osm-backup-test-'.bin2hex(random_bytes(8)).'.tmp';
         $path = self::joinPath($directory, $filename);
         $payload = 'OpenSTAManager backup destination test';
@@ -127,6 +135,12 @@ class BackupDistributor
             return $result;
         }
 
+        if (!is_file($backup_path) || !is_readable($backup_path)) {
+            $result['message'] = tr('Il file di backup da distribuire non è leggibile.');
+
+            return $result;
+        }
+
         $stream = fopen($backup_path, 'rb');
         if ($stream === false) {
             $result['message'] = tr('Impossibile aprire il backup per il trasferimento.');
@@ -134,22 +148,42 @@ class BackupDistributor
             return $result;
         }
 
+        $filesystem = null;
+        $temporary_path = null;
+        $remote_path = null;
+
         try {
             $filesystem = self::getFilesystem($destination);
             $directory = self::normalizeDirectory($destination->path);
             $remote_path = self::joinPath($directory, basename($backup_path));
+            $temporary_path = $remote_path.'.part';
 
             self::ensureDirectory($filesystem, $directory);
-            $filesystem->writeStream($remote_path, $stream);
 
-            if (!$filesystem->fileExists($remote_path)) {
+            if ($filesystem->fileExists($temporary_path)) {
+                $filesystem->delete($temporary_path);
+            }
+
+            $filesystem->writeStream($temporary_path, $stream);
+
+            if (!$filesystem->fileExists($temporary_path)) {
                 throw new \RuntimeException(tr('Il backup trasferito non è presente sulla destinazione.'));
             }
 
             $local_size = filesize($backup_path);
-            $remote_size = $filesystem->fileSize($remote_path);
+            $remote_size = $filesystem->fileSize($temporary_path);
             if ($local_size === false || $remote_size !== $local_size) {
                 throw new \RuntimeException(tr('La dimensione del backup trasferito non corrisponde al file originale.'));
+            }
+
+            if ($filesystem->fileExists($remote_path)) {
+                $filesystem->delete($remote_path);
+            }
+
+            $filesystem->move($temporary_path, $remote_path);
+
+            if (!$filesystem->fileExists($remote_path)) {
+                throw new \RuntimeException(tr('Il backup verificato non è stato finalizzato sulla destinazione.'));
             }
 
             self::cleanup($filesystem, $directory, (int) $destination->retention);
@@ -157,14 +191,49 @@ class BackupDistributor
             $result['success'] = true;
             $result['message'] = tr('Backup trasferito e verificato correttamente.');
             $result['path'] = $remote_path;
-            $result['size'] = $remote_size;
+            $result['size'] = $filesystem->fileSize($remote_path);
         } catch (Throwable $e) {
+            if ($filesystem !== null && $temporary_path !== null) {
+                try {
+                    if ($filesystem->fileExists($temporary_path)) {
+                        $filesystem->delete($temporary_path);
+                    }
+                } catch (Throwable) {
+                }
+            }
+
             $result['message'] = $e->getMessage();
         } finally {
             fclose($stream);
         }
 
         return $result;
+    }
+
+    /**
+     * Normalizza e valida il percorso relativo della destinazione.
+     */
+    public static function normalizeDirectory(?string $directory): string
+    {
+        $directory = str_replace('\\', '/', trim((string) $directory));
+        $directory = trim($directory, '/');
+
+        if ($directory === '') {
+            return '';
+        }
+
+        if (preg_match('/[\x00-\x1F\x7F]/', $directory)) {
+            throw new \InvalidArgumentException(tr('Il percorso della destinazione contiene caratteri non validi.'));
+        }
+
+        $segments = explode('/', $directory);
+        foreach ($segments as $segment) {
+            if ($segment === '' || $segment === '.' || $segment === '..') {
+                throw new \InvalidArgumentException(tr('Il percorso della destinazione deve essere relativo e non può contenere segmenti . o ...'));
+            }
+        }
+
+        return implode('/', $segments);
     }
 
     protected static function getFilesystem(BackupDestination $destination): OSMFilesystem
@@ -175,6 +244,10 @@ class BackupDistributor
         }
 
         $class = $adapter_config->class;
+        if (empty($class) || !class_exists($class)) {
+            throw new \RuntimeException(tr('Classe dell’adattatore di archiviazione non disponibile.'));
+        }
+
         $adapter = new $class($adapter_config->options);
 
         return new OSMFilesystem($adapter);
@@ -212,11 +285,6 @@ class BackupDistributor
         for ($i = 0; $i < $remove; ++$i) {
             $filesystem->delete($backups[$i]);
         }
-    }
-
-    protected static function normalizeDirectory(?string $directory): string
-    {
-        return trim((string) $directory, '/');
     }
 
     protected static function joinPath(string $directory, string $filename): string
