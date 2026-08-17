@@ -10,4 +10,6 @@
  * (at your option) any later version.
  */
 
-include __DIR__.'/sections/destinations.php';
+if ($structure->permission == 'rw') {
+    include __DIR__.'/sections/destinations.php';
+}
