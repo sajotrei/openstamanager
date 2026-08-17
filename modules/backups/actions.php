@@ -73,18 +73,24 @@ switch (filter('op')) {
             $result = Backup::create($ignores);
 
             if ($result) {
-                $after = Backup::getList();
-                $created_backups = array_values(array_diff($after, $before));
-                $backup = end($created_backups) ?: end($after);
-                $distribution_results = $backup ? BackupDistributor::distribute($backup) : [];
-                $failed_destinations = array_filter($distribution_results, fn ($item) => !$item['success']);
-
                 flash()->info(tr('Nuovo backup creato correttamente!'));
 
-                if (!empty($failed_destinations)) {
-                    $names = array_map(fn ($item) => $item['adapter'] ?: tr('Destinazione sconosciuta'), $failed_destinations);
-                    flash()->warning(tr('Backup locale creato, ma alcune destinazioni secondarie non sono state aggiornate: _DESTINATIONS_', [
-                        '_DESTINATIONS_' => implode(', ', $names),
+                try {
+                    $after = Backup::getList();
+                    $created_backups = array_values(array_diff($after, $before));
+                    $backup = end($created_backups) ?: end($after);
+                    $distribution_results = $backup ? BackupDistributor::distribute($backup) : [];
+                    $failed_destinations = array_filter($distribution_results, fn ($item) => !$item['success']);
+
+                    if (!empty($failed_destinations)) {
+                        $names = array_map(fn ($item) => $item['adapter'] ?: tr('Destinazione sconosciuta'), $failed_destinations);
+                        flash()->warning(tr('Backup locale creato, ma alcune destinazioni secondarie non sono state aggiornate: _DESTINATIONS_', [
+                            '_DESTINATIONS_' => implode(', ', $names),
+                        ]));
+                    }
+                } catch (Throwable $e) {
+                    flash()->warning(tr('Backup locale creato, ma la distribuzione verso le destinazioni secondarie non è stata completata: _ERROR_', [
+                        '_ERROR_' => $e->getMessage(),
                     ]));
                 }
             } else {
