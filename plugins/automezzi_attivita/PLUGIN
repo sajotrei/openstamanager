@@ -1,0 +1,8 @@
+name = "Automezzi attività"
+directory = "automezzi_attivita"
+title = "Automezzi attività"
+module_from = "Interventi"
+module_to = "Interventi"
+position = "tab"
+version = "1.0.0"
+compatibility = "2.10.4"
