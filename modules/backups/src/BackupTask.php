@@ -21,6 +21,7 @@
 namespace Modules\Backups;
 
 use Tasks\Manager;
+use Throwable;
 
 /**
  * Task dedicato alla gestione del backup giornaliero automatico, se abilitato da Impostazioni.
@@ -44,18 +45,27 @@ class BackupTask extends Manager
             $created = \Backup::daily();
 
             if ($created) {
-                $after = \Backup::getList();
-                $created_backups = array_values(array_diff($after, $before));
-                $backup = end($created_backups) ?: end($after);
-                $distribution_results = $backup ? BackupDistributor::distribute($backup) : [];
-                $failed_destinations = array_filter($distribution_results, fn ($item) => !$item['success']);
+                try {
+                    $after = \Backup::getList();
+                    $created_backups = array_values(array_diff($after, $before));
+                    $backup = end($created_backups) ?: end($after);
+                    $distribution_results = $backup ? BackupDistributor::distribute($backup) : [];
+                    $failed_destinations = array_filter($distribution_results, fn ($item) => !$item['success']);
 
-                if (!empty($failed_destinations)) {
-                    $names = array_map(fn ($item) => $item['adapter'] ?: tr('Destinazione sconosciuta'), $failed_destinations);
+                    if (!empty($failed_destinations)) {
+                        $names = array_map(fn ($item) => $item['adapter'] ?: tr('Destinazione sconosciuta'), $failed_destinations);
+                        $result = [
+                            'response' => 2,
+                            'message' => tr('Backup locale completato, ma alcune destinazioni secondarie non sono state aggiornate: _DESTINATIONS_', [
+                                '_DESTINATIONS_' => implode(', ', $names),
+                            ]),
+                        ];
+                    }
+                } catch (Throwable $e) {
                     $result = [
                         'response' => 2,
-                        'message' => tr('Backup locale completato, ma alcune destinazioni secondarie non sono state aggiornate: _DESTINATIONS_', [
-                            '_DESTINATIONS_' => implode(', ', $names),
+                        'message' => tr('Backup locale completato, ma la distribuzione verso le destinazioni secondarie non è stata completata: _ERROR_', [
+                            '_ERROR_' => $e->getMessage(),
                         ]),
                     ];
                 }
