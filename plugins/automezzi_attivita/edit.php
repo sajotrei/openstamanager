@@ -112,12 +112,14 @@ $(document).ready(function () {
 
         button.prop('disabled', true);
         $.ajax({
-            url: globals.rootdir + '/plugins/automezzi_attivita/actions.php',
+            url: globals.rootdir + '/actions.php',
             type: 'POST',
             dataType: 'json',
             data: {
-                op: 'save',
+                id_module: globals.id_module,
+                id_plugin: <?php echo (int) $id_plugin; ?>,
                 id_record: globals.id_record,
+                op: 'save',
                 automezzi: rows
             },
             success: function (response) {
