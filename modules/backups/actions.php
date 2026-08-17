@@ -130,13 +130,13 @@ switch (filter('op')) {
             break;
         }
 
-        $duplicate = BackupDestination::where('id_adapter', $id_adapter);
+        $duplicate = BackupDestination::where('id_adapter', $id_adapter)->where('path', $path);
         if ($id > 0) {
             $duplicate->where('id', '!=', $id);
         }
 
         if ($duplicate->exists()) {
-            flash()->error(tr('Questo adattatore è già configurato come destinazione di backup.'));
+            flash()->error(tr('Questo adattatore e percorso sono già configurati come destinazione di backup.'));
             break;
         }
 
