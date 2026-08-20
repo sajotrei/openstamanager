@@ -79,4 +79,14 @@ class BackupModulePackageTest extends TestCase
 
         $this->assertStringContainsString("protected \$guarded = ['*'];", $model);
     }
+
+    public function testDistributorStreamsBackupAndCachesPrimaryAdapterLookup(): void
+    {
+        $distributor = file_get_contents(__DIR__.'/../modules/backups/custom/src/BackupDistributor.php');
+
+        $this->assertStringContainsString('writeStream(', $distributor);
+        $this->assertStringNotContainsString('file_get_contents($backup_path', $distributor);
+        $this->assertStringContainsString('primary_adapter_resolved', $distributor);
+        $this->assertStringContainsString('getPrimaryAdapterId()', $distributor);
+    }
 }

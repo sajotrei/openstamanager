@@ -8,6 +8,9 @@ use Throwable;
 
 class BackupDistributor
 {
+    protected static ?int $primary_adapter_id = null;
+    protected static bool $primary_adapter_resolved = false;
+
     public static function distribute(string $backup_path, bool $only_pending = false): array
     {
         if (!is_file($backup_path) || !is_readable($backup_path)) {
@@ -349,10 +352,21 @@ class BackupDistributor
             return;
         }
 
-        $primary_adapter = \Backup::getStorageAdapter();
-        if (!empty($primary_adapter) && (int) $primary_adapter->id === (int) $adapter->id) {
+        $primary_adapter_id = self::getPrimaryAdapterId();
+        if ($primary_adapter_id !== null && $primary_adapter_id === (int) $adapter->id) {
             throw new \RuntimeException(tr('La destinazione secondaria coincide con l’adattatore usato per il backup principale.'));
         }
+    }
+
+    protected static function getPrimaryAdapterId(): ?int
+    {
+        if (!self::$primary_adapter_resolved) {
+            $primary_adapter = \Backup::getStorageAdapter();
+            self::$primary_adapter_id = !empty($primary_adapter?->id) ? (int) $primary_adapter->id : null;
+            self::$primary_adapter_resolved = true;
+        }
+
+        return self::$primary_adapter_id;
     }
 
     protected static function getFilesystem(BackupDestination $destination): OSMFilesystem
