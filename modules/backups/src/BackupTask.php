@@ -35,53 +35,69 @@ class BackupTask extends Manager
 
     public function execute()
     {
-        $result = [
-            'response' => 1,
-            'message' => tr('Backup generato correttamente!'),
-        ];
-
-        if (setting('Backup automatico') && !\Backup::isDailyComplete()) {
-            $before = \Backup::getList();
-            $created = \Backup::daily();
-
-            if ($created) {
-                try {
-                    $after = \Backup::getList();
-                    $created_backups = array_values(array_diff($after, $before));
-                    $backup = end($created_backups) ?: end($after);
-                    $distribution_results = $backup ? BackupDistributor::distribute($backup) : [];
-                    $failed_destinations = array_filter($distribution_results, fn ($item) => !$item['success']);
-
-                    if (!empty($failed_destinations)) {
-                        $names = array_map(fn ($item) => $item['adapter'] ?: tr('Destinazione sconosciuta'), $failed_destinations);
-                        $result = [
-                            'response' => 2,
-                            'message' => tr('Backup locale completato, ma alcune destinazioni secondarie non sono state aggiornate: _DESTINATIONS_', [
-                                '_DESTINATIONS_' => implode(', ', $names),
-                            ]),
-                        ];
-                    }
-                } catch (Throwable $e) {
-                    $result = [
-                        'response' => 2,
-                        'message' => tr('Backup locale completato, ma la distribuzione verso le destinazioni secondarie non è stata completata: _ERROR_', [
-                            '_ERROR_' => $e->getMessage(),
-                        ]),
-                    ];
-                }
-            }
-        } elseif (!setting('Backup automatico')) {
-            $result = [
+        if (!setting('Backup automatico')) {
+            return [
                 'response' => 2,
                 'message' => tr('Backup automatico disattivato'),
             ];
-        } else {
-            $result = [
+        }
+
+        if (\Backup::isDailyComplete()) {
+            return [
                 'response' => 2,
                 'message' => tr('Backup già eseguito'),
             ];
         }
 
-        return $result;
+        try {
+            $job = BackupManager::daily();
+        } catch (Throwable $e) {
+            return [
+                'response' => 2,
+                'message' => tr('Errore durante la creazione del backup: _ERROR_', [
+                    '_ERROR_' => $e->getMessage(),
+                ]),
+            ];
+        }
+
+        if ($job['busy']) {
+            return [
+                'response' => 2,
+                'message' => tr('Un’altra operazione di backup è già in corso'),
+            ];
+        }
+
+        if (!$job['created']) {
+            return [
+                'response' => 2,
+                'message' => tr('Backup già eseguito'),
+            ];
+        }
+
+        if (!empty($job['distribution_error'])) {
+            return [
+                'response' => 2,
+                'message' => tr('Backup locale completato, ma la distribuzione verso le destinazioni secondarie non è stata completata: _ERROR_', [
+                    '_ERROR_' => $job['distribution_error'],
+                ]),
+            ];
+        }
+
+        $failed_destinations = array_filter($job['distribution'], fn ($item) => !$item['success']);
+        if (!empty($failed_destinations)) {
+            $names = array_map(fn ($item) => $item['adapter'] ?: tr('Destinazione sconosciuta'), $failed_destinations);
+
+            return [
+                'response' => 2,
+                'message' => tr('Backup locale completato, ma alcune destinazioni secondarie non sono state aggiornate: _DESTINATIONS_', [
+                    '_DESTINATIONS_' => implode(', ', $names),
+                ]),
+            ];
+        }
+
+        return [
+            'response' => 1,
+            'message' => tr('Backup generato correttamente!'),
+        ];
     }
 }
