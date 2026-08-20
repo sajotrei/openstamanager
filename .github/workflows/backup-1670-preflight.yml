@@ -1,0 +1,86 @@
+name: OSM 1670 Preflight
+
+on:
+  push:
+    branches:
+      - ci/1670-preflight
+
+jobs:
+  preflight:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up PHP 8.3
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          coverage: none
+
+      - name: Verify branch scope
+        shell: bash
+        run: |
+          set -euo pipefail
+          base=e9c4136fe1d68fdbb4010203cd55fe24cefe5a61
+          git diff --check "$base"...HEAD
+          mapfile -t changed < <(git diff --name-only "$base"...HEAD | grep -v '^\.github/workflows/backup-1670-preflight.yml$')
+          allowed=(
+            modules/backups/actions.php
+            modules/backups/controller_before.php
+            modules/backups/edit.php
+            modules/backups/sections/destinations.php
+            modules/backups/src/BackupDestination.php
+            modules/backups/src/BackupDistributor.php
+            modules/backups/src/BackupManager.php
+            modules/backups/src/BackupTask.php
+            src/Backup.php
+            tests/BackupDistributorTest.php
+            tests/BackupManagerTest.php
+            tests/BackupNameTest.php
+            tests/Integration/BackupFtpIntegrationTest.php
+            update/2_12.sql
+            update/tables.php
+          )
+          for file in "${changed[@]}"; do
+            printf '%s\n' "${allowed[@]}" | grep -Fxq "$file" || { echo "OUT OF SCOPE: $file"; exit 1; }
+          done
+
+      - name: PHP syntax lint
+        shell: bash
+        run: |
+          set -euo pipefail
+          files=(
+            modules/backups/actions.php
+            modules/backups/controller_before.php
+            modules/backups/edit.php
+            modules/backups/sections/destinations.php
+            modules/backups/src/BackupDestination.php
+            modules/backups/src/BackupDistributor.php
+            modules/backups/src/BackupManager.php
+            modules/backups/src/BackupTask.php
+            src/Backup.php
+            tests/BackupDistributorTest.php
+            tests/BackupManagerTest.php
+            tests/BackupNameTest.php
+            tests/Integration/BackupFtpIntegrationTest.php
+            update/tables.php
+          )
+          for file in "${files[@]}"; do
+            php -l "$file"
+          done
+
+      - name: Static backup safeguards
+        shell: bash
+        run: |
+          set -euo pipefail
+          test ! -e update/2_12_1.sql
+          grep -Fq 'writeStream(' modules/backups/src/BackupDistributor.php
+          ! grep -Fq 'file_get_contents($backup_path' modules/backups/src/BackupDistributor.php
+          grep -Fq "'.part'" modules/backups/src/BackupDistributor.php
+          grep -Fq 'LOCK_EX | LOCK_NB' modules/backups/src/BackupManager.php
+          grep -Fq 'unique_backup_destination_adapter_path' update/2_12.sql
+          grep -Fq 'zz_backup_destinations_ibfk_1' update/2_12.sql
+          grep -Fq "'zz_backup_destinations'" update/tables.php
+          grep -Fq 'type: "POST"' modules/backups/edit.php
