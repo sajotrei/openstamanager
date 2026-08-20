@@ -9,7 +9,7 @@ class BackupModulePackageTest extends TestCase
         $module = parse_ini_file(__DIR__.'/../modules/backups/MODULE');
 
         $this->assertSame('Backup', $module['name'] ?? null);
-        $this->assertSame('1.0', $module['version'] ?? null);
+        $this->assertSame('1.1.0', $module['version'] ?? null);
         $this->assertSame('2.10.4', $module['compatibility'] ?? null);
         $this->assertSame('backups', $module['directory'] ?? null);
     }
@@ -26,19 +26,21 @@ class BackupModulePackageTest extends TestCase
             'custom/src/BackupManager.php',
             'custom/src/BackupTask.php',
             'update/1_0.sql',
-            'update/1_0.php',
+            'update/1_1.php',
             'update/tables.php',
         ];
 
         foreach ($required as $file) {
             $this->assertFileExists(__DIR__.'/../modules/backups/'.$file);
         }
+
+        $this->assertFileDoesNotExist(__DIR__.'/../modules/backups/update/1_0.php');
     }
 
     public function testMigrationSupportsCleanInstallAndLegacyUpgrade(): void
     {
         $sql = file_get_contents(__DIR__.'/../modules/backups/update/1_0.sql');
-        $script = file_get_contents(__DIR__.'/../modules/backups/update/1_0.php');
+        $script = file_get_contents(__DIR__.'/../modules/backups/update/1_1.php');
         $tables = include __DIR__.'/../modules/backups/update/tables.php';
 
         $this->assertStringContainsString('CREATE TABLE IF NOT EXISTS `zz_backup_destinations`', $sql);
