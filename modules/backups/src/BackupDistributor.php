@@ -274,6 +274,12 @@ class BackupDistributor
             throw new \InvalidArgumentException(tr('Il percorso della destinazione contiene caratteri non validi.'));
         }
 
+        // Uno slash finale non cambia la destinazione e viene normalizzato.
+        $normalized = rtrim($normalized, '/');
+        if ($normalized === '') {
+            return '';
+        }
+
         $segments = explode('/', $normalized);
         foreach ($segments as $segment) {
             if ($segment === '' || $segment === '.' || $segment === '..') {
