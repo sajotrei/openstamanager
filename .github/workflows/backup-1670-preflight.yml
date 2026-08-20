@@ -4,6 +4,11 @@ on:
   push:
     branches:
       - ci/1670-preflight
+    paths-ignore:
+      - .github/backup-1670-preflight-result.txt
+
+permissions:
+  contents: write
 
 jobs:
   preflight:
@@ -20,6 +25,8 @@ jobs:
           coverage: none
 
       - name: Verify branch scope
+        id: scope
+        continue-on-error: true
         shell: bash
         run: |
           set -euo pipefail
@@ -48,6 +55,8 @@ jobs:
           done
 
       - name: PHP syntax lint
+        id: lint
+        continue-on-error: true
         shell: bash
         run: |
           set -euo pipefail
@@ -72,6 +81,8 @@ jobs:
           done
 
       - name: Static backup safeguards
+        id: safeguards
+        continue-on-error: true
         shell: bash
         run: |
           set -euo pipefail
@@ -84,3 +95,36 @@ jobs:
           grep -Fq 'zz_backup_destinations_ibfk_1' update/2_12.sql
           grep -Fq "'zz_backup_destinations'" update/tables.php
           grep -Fq 'type: "POST"' modules/backups/edit.php
+
+      - name: Record preflight result
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          scope='${{ steps.scope.outcome }}'
+          lint='${{ steps.lint.outcome }}'
+          safeguards='${{ steps.safeguards.outcome }}'
+          overall=PASS
+          if [[ "$scope" != success || "$lint" != success || "$safeguards" != success ]]; then
+            overall=FAIL
+          fi
+          cat > .github/backup-1670-preflight-result.txt <<EOF
+          overall=$overall
+          scope=$scope
+          php_lint=$lint
+          safeguards=$safeguards
+          source_commit=${GITHUB_SHA}
+          EOF
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .github/backup-1670-preflight-result.txt
+          git commit -m 'test: record #1670 preflight result' || true
+          git push
+
+      - name: Enforce preflight result
+        if: always()
+        shell: bash
+        run: |
+          test '${{ steps.scope.outcome }}' = success
+          test '${{ steps.lint.outcome }}' = success
+          test '${{ steps.safeguards.outcome }}' = success
