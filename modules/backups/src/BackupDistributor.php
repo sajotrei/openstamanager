@@ -260,6 +260,10 @@ class BackupDistributor
             return '';
         }
 
+        if (strlen($normalized) > 255) {
+            throw new \InvalidArgumentException(tr('Il percorso della destinazione non può superare 255 caratteri.'));
+        }
+
         if (str_starts_with($normalized, '/')
             || preg_match('/^[A-Za-z]:\//', $normalized)
             || preg_match('/^[A-Za-z][A-Za-z0-9+.-]*:\/\//', $normalized)) {
@@ -323,10 +327,24 @@ class BackupDistributor
             return;
         }
 
-        $primary_adapter = \Backup::getStorageAdapter();
-        if (!empty($primary_adapter) && (int) $primary_adapter->id === (int) $adapter->id) {
+        $primary_adapter_id = self::getPrimaryAdapterId();
+        if ($primary_adapter_id !== null && $primary_adapter_id === (int) $adapter->id) {
             throw new \RuntimeException(tr('La destinazione secondaria coincide con l’adattatore usato per il backup principale.'));
         }
+    }
+
+    protected static function getPrimaryAdapterId(): ?int
+    {
+        static $resolved = false;
+        static $id = null;
+
+        if (!$resolved) {
+            $primary_adapter = \Backup::getStorageAdapter();
+            $id = !empty($primary_adapter) ? (int) $primary_adapter->id : null;
+            $resolved = true;
+        }
+
+        return $id;
     }
 
     protected static function getFilesystem(BackupDestination $destination): OSMFilesystem
