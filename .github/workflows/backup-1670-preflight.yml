@@ -31,8 +31,8 @@ jobs:
         run: |
           set -euo pipefail
           base=e9c4136fe1d68fdbb4010203cd55fe24cefe5a61
-          git diff --check "$base"...HEAD
-          mapfile -t changed < <(git diff --name-only "$base"...HEAD | grep -v '^\.github/workflows/backup-1670-preflight.yml$')
+          mapfile -t changed < <(git diff --name-only "$base"...HEAD | grep -v -E '^\.github/(workflows/backup-1670-preflight\.yml|backup-1670-preflight-trigger\.txt)$')
+          git diff --check "$base"...HEAD -- . ':(exclude).github/workflows/backup-1670-preflight.yml' ':(exclude).github/backup-1670-preflight-trigger.txt'
           allowed=(
             modules/backups/actions.php
             modules/backups/controller_before.php
