@@ -32,14 +32,14 @@ class BackupDistributorTest extends TestCase
 {
     protected string $root;
 
-    protected $previousDocroot;
+    public static function setUpBeforeClass(): void
+    {
+        include_once __DIR__.'/../core.php';
+    }
 
     protected function setUp(): void
     {
         parent::setUp();
-
-        $this->previousDocroot = App::$docroot;
-        App::$docroot = dirname(__DIR__);
 
         $this->root = 'tmp/backup-distributor-'.bin2hex(random_bytes(6));
         mkdir(base_dir().'/'.$this->root, 0777, true);
@@ -48,7 +48,6 @@ class BackupDistributorTest extends TestCase
     protected function tearDown(): void
     {
         $this->removeDirectory(base_dir().'/'.$this->root);
-        App::$docroot = $this->previousDocroot;
 
         parent::tearDown();
     }
@@ -251,6 +250,13 @@ class BackupDistributorTest extends TestCase
         $this->expectException(InvalidArgumentException::class);
 
         BackupDistributor::normalizeDirectory('ftp://server/backups');
+    }
+
+    public function testTooLongPathIsRejected(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+
+        BackupDistributor::normalizeDirectory(str_repeat('a', 256));
     }
 
     public function testEmptyPathIsAllowed(): void
