@@ -100,7 +100,7 @@ function creaBackup(button){
             let selectedOption = $("#swal-backup-select").val();
             $.ajax({
                 url: globals.rootdir + "/actions.php",
-                type: "POST",
+                type: "GET",
                 data: {
                     id_module: globals.id_module,
                     op: "backup",

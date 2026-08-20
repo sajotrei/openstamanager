@@ -132,8 +132,6 @@ class Backup
     /**
      * Restituisce i valori utilizzati sulle variabili sostituite.
      *
-     * @param string $string
-     *
      * @return array
      */
     public static function readName($string)
@@ -194,8 +192,7 @@ class Backup
         self::checkSpace();
 
         $backup_dir = self::getDirectory();
-        $backup_type = ($ignores['dirs'] || $ignores['files']) ? 'PARTIAL' : 'FULL';
-        $backup_name = self::getNextName($backup_type);
+        $backup_name = tr(self::getNextName(), ['AAAAAAA' => ($ignores['dirs'] || $ignores['files']) ? 'PARTIAL' : 'FULL']);
 
         set_time_limit(0);
 
@@ -508,28 +505,12 @@ class Backup
     }
 
     /**
-     * Restituisce un nome univoco per il backup successivo.
+     * Restituisce il nome previsto per il backup successivo.
+     *
+     * @return string
      */
-    protected static function getNextName(string $type)
+    protected static function getNextName()
     {
-        $date = new DateTimeImmutable();
-        $directory = self::getDirectory();
-
-        do {
-            // Generator associa attualmente il token "s" al giorno del mese: per i backup
-            // imponiamo esplicitamente i secondi reali senza modificare il comportamento globale.
-            $raw_name = Generator::generate(self::PATTERN, null, 1, [
-                's' => [
-                    'value' => $date->format('s'),
-                ],
-            ], $date->format('Y-m-d H:i:s'));
-            $backup_name = tr($raw_name, [
-                'AAAAAAA' => $type,
-            ]);
-            $backup_path = $directory.'/'.$backup_name.'.zip';
-            $date = $date->modify('+1 second');
-        } while (file_exists($backup_path));
-
-        return $backup_name;
+        return Generator::generate(self::PATTERN);
     }
 }
