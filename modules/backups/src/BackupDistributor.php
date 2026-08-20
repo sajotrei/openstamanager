@@ -196,22 +196,25 @@ class BackupDistributor
                 throw new \RuntimeException(tr('La dimensione del backup trasferito non corrisponde al file originale.'));
             }
 
-            // Una replica già presente con la stessa dimensione è considerata valida.
-            // Questo rende l'operazione idempotente senza eliminare inutilmente una copia buona.
-            if ($filesystem->fileExists($remote_path) && $filesystem->fileSize($remote_path) === $local_size) {
-                $filesystem->delete($temporary_path);
-                self::cleanup($filesystem, $directory, (int) $destination->retention);
-
-                $result['success'] = true;
-                $result['message'] = tr('Backup già presente e verificato sulla destinazione.');
-                $result['path'] = $remote_path;
-                $result['size'] = $local_size;
-
-                return $result;
-            }
-
+            // Non sovrascrivere mai una copia remota divergente: se il nome esiste già,
+            // la stessa dimensione rende la replica idempotente; una dimensione diversa
+            // viene invece trattata come conflitto e il file esistente resta intatto.
             if ($filesystem->fileExists($remote_path)) {
-                $filesystem->delete($remote_path);
+                $existing_size = $filesystem->fileSize($remote_path);
+                if ($existing_size === $local_size) {
+                    $filesystem->delete($temporary_path);
+                    self::cleanup($filesystem, $directory, (int) $destination->retention);
+
+                    $result['success'] = true;
+                    $result['message'] = tr('Backup già presente e verificato sulla destinazione.');
+                    $result['path'] = $remote_path;
+                    $result['size'] = $local_size;
+
+                    return $result;
+                }
+
+                $filesystem->delete($temporary_path);
+                throw new \RuntimeException(tr('Sulla destinazione esiste già un backup con lo stesso nome ma dimensione differente. Il file esistente non è stato sovrascritto.'));
             }
 
             $filesystem->move($temporary_path, $remote_path);
