@@ -175,6 +175,7 @@ return [
     'zz_api_log',
     'zz_api_resources',
     'zz_app_tokens',
+    'zz_backup_destinations',
     'zz_cache',
     'zz_cache_lang',
     'zz_categorie',
