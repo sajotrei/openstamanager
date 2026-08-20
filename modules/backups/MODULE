@@ -1,4 +1,4 @@
 name = "Backup"
-version = "1.0"
+version = "1.1.0"
 compatibility = "2.10.4"
 directory = "backups"
