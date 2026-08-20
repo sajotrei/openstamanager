@@ -1,23 +1,5 @@
 <?php
 
-/*
- * OpenSTAManager: il software gestionale open source per l'assistenza tecnica e la fatturazione
- * Copyright (C) DevCode s.r.l.
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program. If not, see <https://www.gnu.org/licenses/>.
- */
-
 namespace Modules\Backups;
 
 use League\Flysystem\FilesystemAdapter as FlysystemAdapterContract;
@@ -26,27 +8,26 @@ use Throwable;
 
 class BackupDistributor
 {
-    /**
-     * Distribuisce un backup locale verso tutte le destinazioni abilitate.
-     * Il fallimento di una destinazione non interrompe le successive.
-     */
-    public static function distribute(string $backup_path): array
+    public static function distribute(string $backup_path, bool $only_pending = false): array
     {
         if (!is_file($backup_path) || !is_readable($backup_path)) {
             throw new \InvalidArgumentException(tr('Il file di backup da distribuire non è leggibile.'));
         }
 
-        $destinations = BackupDestination::with('adapter')
+        $query = BackupDestination::with('adapter')
             ->where('enabled', 1)
-            ->orderBy('id')
-            ->get();
+            ->orderBy('id');
 
-        return self::distributeDestinations($backup_path, $destinations);
+        if ($only_pending) {
+            $query->where(function ($query) use ($backup_path) {
+                $query->whereNull('last_success_file')
+                    ->orWhere('last_success_file', '!=', basename($backup_path));
+            });
+        }
+
+        return self::distributeDestinations($backup_path, $query->get());
     }
 
-    /**
-     * Verifica scrittura, lettura ed eliminazione di una singola destinazione.
-     */
     public static function test(BackupDestination $destination): array
     {
         $adapter = null;
@@ -123,9 +104,6 @@ class BackupDistributor
         }
     }
 
-    /**
-     * Distribuisce il backup verso una singola destinazione.
-     */
     public static function distributeTo(string $backup_path, BackupDestination $destination): array
     {
         $adapter = null;
@@ -133,12 +111,7 @@ class BackupDistributor
         try {
             $adapter = $destination->adapter;
         } catch (Throwable $e) {
-            return [
-                'id' => $destination->id,
-                'adapter' => null,
-                'success' => false,
-                'message' => self::safeErrorMessage($e),
-            ];
+            return self::failureResult($destination, null, self::safeErrorMessage($e));
         }
 
         $result = [
@@ -151,20 +124,26 @@ class BackupDistributor
         try {
             self::assertSecondaryDestination($destination);
         } catch (Throwable $e) {
-            $result['message'] = self::safeErrorMessage($e, $adapter);
+            $message = self::safeErrorMessage($e, $adapter);
+            self::recordFailure($destination, $message);
+            $result['message'] = $message;
 
             return $result;
         }
 
         if (!is_file($backup_path) || !is_readable($backup_path)) {
-            $result['message'] = tr('Il file di backup da distribuire non è leggibile.');
+            $message = tr('Il file di backup da distribuire non è leggibile.');
+            self::recordFailure($destination, $message);
+            $result['message'] = $message;
 
             return $result;
         }
 
         $stream = fopen($backup_path, 'rb');
         if ($stream === false) {
-            $result['message'] = tr('Impossibile aprire il backup per il trasferimento.');
+            $message = tr('Impossibile aprire il backup per il trasferimento.');
+            self::recordFailure($destination, $message);
+            $result['message'] = $message;
 
             return $result;
         }
@@ -173,6 +152,8 @@ class BackupDistributor
         $temporary_path = null;
 
         try {
+            self::recordAttempt($destination);
+
             $filesystem = self::getFilesystem($destination);
             $directory = self::normalizeDirectory($destination->path);
             $remote_path = self::joinPath($directory, basename($backup_path));
@@ -196,14 +177,11 @@ class BackupDistributor
                 throw new \RuntimeException(tr('La dimensione del backup trasferito non corrisponde al file originale.'));
             }
 
-            // Non sovrascrivere mai una copia remota divergente: se il nome esiste già,
-            // la stessa dimensione rende la replica idempotente; una dimensione diversa
-            // viene invece trattata come conflitto e il file esistente resta intatto.
             if ($filesystem->fileExists($remote_path)) {
-                $existing_size = $filesystem->fileSize($remote_path);
-                if ($existing_size === $local_size) {
+                if ($filesystem->fileSize($remote_path) === $local_size) {
                     $filesystem->delete($temporary_path);
                     self::cleanup($filesystem, $directory, (int) $destination->retention);
+                    self::recordSuccess($destination, basename($backup_path));
 
                     $result['success'] = true;
                     $result['message'] = tr('Backup già presente e verificato sulla destinazione.');
@@ -213,8 +191,7 @@ class BackupDistributor
                     return $result;
                 }
 
-                $filesystem->delete($temporary_path);
-                throw new \RuntimeException(tr('Sulla destinazione esiste già un backup con lo stesso nome ma dimensione differente. Il file esistente non è stato sovrascritto.'));
+                throw new \RuntimeException(tr('Esiste già un backup con lo stesso nome ma dimensione differente. Il file esistente è stato preservato.'));
             }
 
             $filesystem->move($temporary_path, $remote_path);
@@ -228,6 +205,7 @@ class BackupDistributor
             }
 
             self::cleanup($filesystem, $directory, (int) $destination->retention);
+            self::recordSuccess($destination, basename($backup_path));
 
             $result['success'] = true;
             $result['message'] = tr('Backup trasferito e verificato correttamente.');
@@ -243,7 +221,9 @@ class BackupDistributor
                 }
             }
 
-            $result['message'] = self::safeErrorMessage($e, $adapter);
+            $message = self::safeErrorMessage($e, $adapter);
+            self::recordFailure($destination, $message);
+            $result['message'] = $message;
         } finally {
             fclose($stream);
         }
@@ -251,13 +231,9 @@ class BackupDistributor
         return $result;
     }
 
-    /**
-     * Normalizza e valida il percorso relativo della destinazione.
-     */
     public static function normalizeDirectory(?string $directory): string
     {
-        $raw = trim((string) $directory);
-        $normalized = str_replace('\\', '/', $raw);
+        $normalized = str_replace('\\', '/', trim((string) $directory));
 
         if ($normalized === '') {
             return '';
@@ -277,7 +253,6 @@ class BackupDistributor
             throw new \InvalidArgumentException(tr('Il percorso della destinazione contiene caratteri non validi.'));
         }
 
-        // Uno slash finale non cambia la destinazione e viene normalizzato.
         $normalized = rtrim($normalized, '/');
         if ($normalized === '') {
             return '';
@@ -286,16 +261,56 @@ class BackupDistributor
         $segments = explode('/', $normalized);
         foreach ($segments as $segment) {
             if ($segment === '' || $segment === '.' || $segment === '..') {
-                throw new \InvalidArgumentException(tr('Il percorso della destinazione non può contenere segmenti . o ...'));
+                throw new \InvalidArgumentException(tr('Il percorso della destinazione contiene segmenti non validi.'));
             }
         }
 
         return implode('/', $segments);
     }
 
-    /**
-     * Esegue la distribuzione su una collezione di destinazioni isolando ogni errore.
-     */
+    public static function needsRetryForLatest(): bool
+    {
+        try {
+            $backup = self::latestLocalBackup();
+            if ($backup === null) {
+                return false;
+            }
+
+            $filename = basename($backup);
+
+            return BackupDestination::where('enabled', 1)
+                ->where(function ($query) use ($filename) {
+                    $query->whereNull('last_success_file')
+                        ->orWhere('last_success_file', '!=', $filename);
+                })
+                ->exists();
+        } catch (Throwable) {
+            return false;
+        }
+    }
+
+    public static function retryLatest(): array
+    {
+        $backup = self::latestLocalBackup();
+        if ($backup === null) {
+            return [];
+        }
+
+        return self::distribute($backup, true);
+    }
+
+    protected static function latestLocalBackup(): ?string
+    {
+        $backups = \Backup::getList();
+        if (empty($backups)) {
+            return null;
+        }
+
+        $backup = end($backups);
+
+        return is_string($backup) ? $backup : null;
+    }
+
     protected static function distributeDestinations(string $backup_path, iterable $destinations): array
     {
         $results = [];
@@ -312,12 +327,11 @@ class BackupDistributor
                     }
                 }
 
-                $results[] = [
-                    'id' => is_object($destination) ? ($destination->id ?? null) : null,
-                    'adapter' => $adapter?->name,
-                    'success' => false,
-                    'message' => self::safeErrorMessage($e, $adapter),
-                ];
+                $results[] = self::failureResult(
+                    $destination,
+                    $adapter,
+                    self::safeErrorMessage($e, $adapter)
+                );
             }
         }
 
@@ -331,35 +345,20 @@ class BackupDistributor
             throw new \RuntimeException(tr('Adattatore di archiviazione non disponibile.'));
         }
 
-        // Gli adapter non persistiti sono usati nei test unitari in-memory.
         if (empty($adapter->id)) {
             return;
         }
 
-        $primary_adapter_id = self::getPrimaryAdapterId();
-        if ($primary_adapter_id !== null && $primary_adapter_id === (int) $adapter->id) {
+        $primary_adapter = \Backup::getStorageAdapter();
+        if (!empty($primary_adapter) && (int) $primary_adapter->id === (int) $adapter->id) {
             throw new \RuntimeException(tr('La destinazione secondaria coincide con l’adattatore usato per il backup principale.'));
         }
-    }
-
-    protected static function getPrimaryAdapterId(): ?int
-    {
-        static $resolved = false;
-        static $id = null;
-
-        if (!$resolved) {
-            $primary_adapter = \Backup::getStorageAdapter();
-            $id = !empty($primary_adapter) ? (int) $primary_adapter->id : null;
-            $resolved = true;
-        }
-
-        return $id;
     }
 
     protected static function getFilesystem(BackupDestination $destination): OSMFilesystem
     {
         $adapter_config = $destination->adapter;
-        $class = $adapter_config->class;
+        $class = $adapter_config->class ?? null;
 
         if (empty($class) || !class_exists($class) || !is_a($class, FlysystemAdapterContract::class, true)) {
             throw new \RuntimeException(tr('Classe dell’adattatore di archiviazione non valida o non disponibile.'));
@@ -379,7 +378,7 @@ class BackupDistributor
 
     protected static function cleanup(OSMFilesystem $filesystem, string $directory, int $retention): void
     {
-        if ($retention <= 0) {
+        if ($retention < 1) {
             return;
         }
 
@@ -390,7 +389,7 @@ class BackupDistributor
             }
 
             $filename = basename($attributes->path());
-            if (!str_starts_with($filename, 'OSM backup ') || !str_ends_with($filename, '.zip')) {
+            if (!preg_match('/^OSM backup \d{4}-\d{2}-\d{2} \d{2}_\d{2}_\d{2} (FULL|PARTIAL)\.zip$/', $filename)) {
                 continue;
             }
 
@@ -402,6 +401,57 @@ class BackupDistributor
         for ($i = 0; $i < $remove; ++$i) {
             $filesystem->delete($backups[$i]);
         }
+    }
+
+    protected static function recordAttempt(BackupDestination $destination): void
+    {
+        if (!$destination->exists) {
+            return;
+        }
+
+        try {
+            $destination->last_attempt_at = date('Y-m-d H:i:s');
+            $destination->save();
+        } catch (Throwable) {
+        }
+    }
+
+    protected static function recordSuccess(BackupDestination $destination, string $filename): void
+    {
+        if (!$destination->exists) {
+            return;
+        }
+
+        try {
+            $destination->last_success_file = $filename;
+            $destination->last_success_at = date('Y-m-d H:i:s');
+            $destination->last_error = null;
+            $destination->save();
+        } catch (Throwable) {
+        }
+    }
+
+    protected static function recordFailure(BackupDestination $destination, string $message): void
+    {
+        if (!$destination->exists) {
+            return;
+        }
+
+        try {
+            $destination->last_error = mb_substr($message, 0, 2000);
+            $destination->save();
+        } catch (Throwable) {
+        }
+    }
+
+    protected static function failureResult(object $destination, ?object $adapter, string $message): array
+    {
+        return [
+            'id' => $destination->id ?? null,
+            'adapter' => $adapter?->name,
+            'success' => false,
+            'message' => $message,
+        ];
     }
 
     protected static function safeErrorMessage(Throwable $exception, ?object $adapter = null): string
@@ -424,7 +474,7 @@ class BackupDistributor
                     continue;
                 }
 
-                if (preg_match('/password|passphrase|secret|token|access[_-]?key|private[_-]?key/i', (string) $key)) {
+                if (preg_match('/password|passphrase|secret|token|access[_-]?key|private[_-]?key|username|user|host/i', (string) $key)) {
                     $message = str_replace((string) $value, '***', $message);
                 }
             }

@@ -20,8 +20,8 @@
 
 namespace Modules\Backups;
 
+use Backup;
 use Tasks\Manager;
-use Throwable;
 
 /**
  * Task dedicato alla gestione del backup giornaliero automatico, se abilitato da Impostazioni.
@@ -35,69 +35,25 @@ class BackupTask extends Manager
 
     public function execute()
     {
-        if (!setting('Backup automatico')) {
-            return [
-                'response' => 2,
-                'message' => tr('Backup automatico disattivato'),
-            ];
-        }
-
-        if (\Backup::isDailyComplete()) {
-            return [
-                'response' => 2,
-                'message' => tr('Backup già eseguito'),
-            ];
-        }
-
-        try {
-            $job = BackupManager::daily();
-        } catch (Throwable $e) {
-            return [
-                'response' => 2,
-                'message' => tr('Errore durante la creazione del backup: _ERROR_', [
-                    '_ERROR_' => $e->getMessage(),
-                ]),
-            ];
-        }
-
-        if ($job['busy']) {
-            return [
-                'response' => 2,
-                'message' => tr('Un’altra operazione di backup è già in corso'),
-            ];
-        }
-
-        if (!$job['created']) {
-            return [
-                'response' => 2,
-                'message' => tr('Backup già eseguito'),
-            ];
-        }
-
-        if (!empty($job['distribution_error'])) {
-            return [
-                'response' => 2,
-                'message' => tr('Backup locale completato, ma la distribuzione verso le destinazioni secondarie non è stata completata: _ERROR_', [
-                    '_ERROR_' => $job['distribution_error'],
-                ]),
-            ];
-        }
-
-        $failed_destinations = array_filter($job['distribution'], fn ($item) => !$item['success']);
-        if (!empty($failed_destinations)) {
-            $names = array_map(fn ($item) => $item['adapter'] ?: tr('Destinazione sconosciuta'), $failed_destinations);
-
-            return [
-                'response' => 2,
-                'message' => tr('Backup locale completato, ma alcune destinazioni secondarie non sono state aggiornate: _DESTINATIONS_', [
-                    '_DESTINATIONS_' => implode(', ', $names),
-                ]),
-            ];
-        }
-
-        return [
+        $result = [
             'response' => 1,
             'message' => tr('Backup generato correttamente!'),
         ];
+
+        if (setting('Backup automatico') && !\Backup::isDailyComplete()) {
+            \Backup::daily();
+        } elseif (!setting('Backup automatico')) {
+            $result = [
+                'response' => 2,
+                'message' => tr('Backup automatico disattivato'),
+            ];
+        } else {
+            $result = [
+                'response' => 2,
+                'message' => tr('Backup già eseguito'),
+            ];
+        }
+
+        return $result;
     }
 }
