@@ -269,6 +269,12 @@ class BackupDistributorTest extends TestCase
         $this->assertSame('customer/backups', BackupDistributor::normalizeDirectory('customer\\backups'));
     }
 
+    public function testTrailingSeparatorsAreNormalized(): void
+    {
+        $this->assertSame('customer/backups', BackupDistributor::normalizeDirectory('customer/backups/'));
+        $this->assertSame('customer/backups', BackupDistributor::normalizeDirectory('customer\\backups\\'));
+    }
+
     public function testSensitiveAdapterOptionsAreRedactedFromErrors(): void
     {
         $adapter = $this->adapter();
