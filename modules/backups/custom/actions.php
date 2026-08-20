@@ -23,12 +23,24 @@ if (!in_array($op, $custom_ops, true)) {
     return;
 }
 
+// Le operazioni custom sono sempre mutative o effettuano I/O remoto: devono
+// passare esclusivamente dal dispatcher autenticato con permessi di scrittura.
+if (empty($structure) || empty($structure['enabled']) || $structure->permission !== 'rw') {
+    http_response_code(403);
+    exit(tr('Accesso negato'));
+}
+
+if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') {
+    http_response_code(405);
+    exit(tr('Metodo non consentito'));
+}
+
 switch ($op) {
     case 'backup':
         $ignores = ['dirs' => [], 'files' => []];
 
         if (filter('exclude') == 'exclude_attachments') {
-            $ignores = ['dirs' => ['files']];
+            $ignores = ['dirs' => ['files'], 'files' => []];
         } elseif (filter('exclude') == 'only_database') {
             $ignores = [
                 'dirs' => ['vendor', 'update', 'templates', 'src', 'plugins', 'modules', 'logs', 'locale', 'lib', 'include', 'files', 'config', 'assets', 'api'],
@@ -44,6 +56,11 @@ switch ($op) {
                 break;
             }
 
+            if (!empty($job['collision'])) {
+                flash()->warning(tr('Creazione annullata per evitare la sovrascrittura di un backup con lo stesso nome. Riprova tra un minuto.'));
+                break;
+            }
+
             if (!$job['created']) {
                 $backup_dir = Backup::getDirectory();
                 flash()->error(tr('Errore durante la creazione del backup!').' '.str_replace('_DIR_', '"'.$backup_dir.'"', tr('Verifica che la cartella _DIR_ abbia i permessi di scrittura!')));
@@ -53,9 +70,7 @@ switch ($op) {
             flash()->info(tr('Nuovo backup creato correttamente!'));
 
             if (!empty($job['distribution_error'])) {
-                flash()->warning(tr('Backup locale creato, ma la distribuzione verso le destinazioni secondarie non è stata completata: _ERROR_', [
-                    '_ERROR_' => $job['distribution_error'],
-                ]));
+                flash()->warning(tr('Backup locale creato, ma la distribuzione verso le destinazioni secondarie non è stata completata.'));
             }
 
             $failed = array_filter($job['distribution'], static fn ($item) => empty($item['success']));
@@ -69,8 +84,8 @@ switch ($op) {
                     '_DESTINATIONS_' => implode(', ', $names),
                 ]));
             }
-        } catch (Throwable $e) {
-            flash()->error(tr('Errore durante la creazione del backup!').' '.$e->getMessage());
+        } catch (Throwable) {
+            flash()->error(tr('Errore durante la creazione del backup.'));
         }
 
         break;
@@ -121,7 +136,13 @@ switch ($op) {
         $destination->path = $path;
         $destination->retention = $retention;
         $destination->enabled = $enabled;
-        $destination->save();
+
+        try {
+            $destination->save();
+        } catch (Throwable) {
+            flash()->error(tr('Impossibile salvare la destinazione di backup. Verifica che adattatore e percorso non siano già configurati.'));
+            break;
+        }
 
         flash()->info($id > 0 ? tr('Destinazione di backup aggiornata.') : tr('Destinazione di backup aggiunta.'));
         break;

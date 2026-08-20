@@ -3,20 +3,29 @@
 namespace Modules\Backups;
 
 use Throwable;
+use Util\Generator;
 
 class BackupManager
 {
     public static function create(array $ignores = []): array
     {
-        return self::run(static fn () => \Backup::create($ignores));
+        $ignores += ['dirs' => [], 'files' => []];
+
+        return self::run(static fn () => \Backup::create($ignores), $ignores);
     }
 
     public static function daily(): array
     {
-        return self::run(static fn () => \Backup::daily());
+        if (\Backup::isDailyComplete()) {
+            return self::result(false, false);
+        }
+
+        $ignores = ['dirs' => [], 'files' => []];
+
+        return self::run(static fn () => \Backup::create($ignores), $ignores);
     }
 
-    protected static function run(callable $creator): array
+    protected static function run(callable $creator, array $ignores): array
     {
         $lock = self::acquireLock();
 
@@ -25,6 +34,11 @@ class BackupManager
         }
 
         try {
+            $expected_backup = self::expectedBackupPath($ignores);
+            if (self::hasCollision($expected_backup)) {
+                return self::result(false, false, null, [], null, true);
+            }
+
             $before = \Backup::getList();
             $created = (bool) $creator();
 
@@ -50,12 +64,33 @@ class BackupManager
                 $distribution = BackupDistributor::distribute($backup);
 
                 return self::result(true, false, $backup, $distribution);
-            } catch (Throwable $e) {
-                return self::result(true, false, $backup, [], $e->getMessage());
+            } catch (Throwable) {
+                return self::result(
+                    true,
+                    false,
+                    $backup,
+                    [],
+                    tr('Errore interno durante la distribuzione del backup verso le destinazioni secondarie.')
+                );
             }
         } finally {
             self::releaseLock($lock);
         }
+    }
+
+    protected static function expectedBackupPath(array $ignores): string
+    {
+        $type = !empty($ignores['dirs']) || !empty($ignores['files']) ? 'PARTIAL' : 'FULL';
+        $name = tr(Generator::generate(\Backup::PATTERN), [
+            'AAAAAAA' => $type,
+        ]);
+
+        return \Backup::getDirectory().'/'.$name.'.zip';
+    }
+
+    protected static function hasCollision(string $path): bool
+    {
+        return is_file($path);
     }
 
     protected static function result(
@@ -63,11 +98,13 @@ class BackupManager
         bool $busy,
         ?string $backup = null,
         array $distribution = [],
-        ?string $distribution_error = null
+        ?string $distribution_error = null,
+        bool $collision = false
     ): array {
         return [
             'created' => $created,
             'busy' => $busy,
+            'collision' => $collision,
             'backup' => $backup,
             'distribution' => $distribution,
             'distribution_error' => $distribution_error,

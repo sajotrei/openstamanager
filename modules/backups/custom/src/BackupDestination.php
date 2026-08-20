@@ -11,7 +11,7 @@ class BackupDestination extends Model
 
     protected $table = 'zz_backup_destinations';
 
-    protected $guarded = ['id'];
+    protected $guarded = ['*'];
 
     protected $casts = [
         'enabled' => 'boolean',

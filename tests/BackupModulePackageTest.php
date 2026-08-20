@@ -26,6 +26,7 @@ class BackupModulePackageTest extends TestCase
             'custom/src/BackupManager.php',
             'custom/src/BackupTask.php',
             'update/1_0.sql',
+            'update/1_0.php',
             'update/tables.php',
         ];
 
@@ -34,22 +35,48 @@ class BackupModulePackageTest extends TestCase
         }
     }
 
-    public function testMigrationRegistersOnlyModuleTable(): void
+    public function testMigrationSupportsCleanInstallAndLegacyUpgrade(): void
     {
         $sql = file_get_contents(__DIR__.'/../modules/backups/update/1_0.sql');
+        $script = file_get_contents(__DIR__.'/../modules/backups/update/1_0.php');
         $tables = include __DIR__.'/../modules/backups/update/tables.php';
 
         $this->assertStringContainsString('CREATE TABLE IF NOT EXISTS `zz_backup_destinations`', $sql);
         $this->assertStringContainsString('unique_backup_destination_adapter_path', $sql);
         $this->assertStringContainsString('zz_backup_destinations_ibfk_1', $sql);
+        $this->assertStringContainsString('SHOW COLUMNS FROM `zz_backup_destinations`', $script);
+        $this->assertStringContainsString("'last_success_file'", $script);
+        $this->assertStringContainsString('idx_backup_destination_last_success_file', $script);
         $this->assertSame(['zz_backup_destinations'], $tables);
     }
 
-    public function testCustomActionsDelegateOriginalBackupOperations(): void
+    public function testCustomActionsDelegateOriginalBackupOperationsAndProtectWrites(): void
     {
         $actions = file_get_contents(__DIR__.'/../modules/backups/custom/actions.php');
 
         $this->assertStringContainsString("include dirname(__DIR__).'/actions.php';", $actions);
         $this->assertStringContainsString("'backup_destination_test'", $actions);
+        $this->assertStringContainsString('$structure->permission !== \'rw\'', $actions);
+        $this->assertStringContainsString("\$_SERVER['REQUEST_METHOD']", $actions);
+        $this->assertStringContainsString("!== 'POST'", $actions);
+    }
+
+    public function testBackupManagerContainsCollisionGuardBeforeCreation(): void
+    {
+        $manager = file_get_contents(__DIR__.'/../modules/backups/custom/src/BackupManager.php');
+
+        $collision = strpos($manager, 'self::hasCollision($expected_backup)');
+        $creation = strpos($manager, '$created = (bool) $creator();');
+
+        $this->assertNotFalse($collision);
+        $this->assertNotFalse($creation);
+        $this->assertLessThan($creation, $collision);
+    }
+
+    public function testDestinationModelRejectsMassAssignmentByDefault(): void
+    {
+        $model = file_get_contents(__DIR__.'/../modules/backups/custom/src/BackupDestination.php');
+
+        $this->assertStringContainsString("protected \$guarded = ['*'];", $model);
     }
 }

@@ -28,12 +28,10 @@ class BackupTask extends Manager
         if (\Backup::isDailyComplete()) {
             try {
                 $results = BackupDistributor::retryLatest();
-            } catch (Throwable $e) {
+            } catch (Throwable) {
                 return [
                     'response' => 2,
-                    'message' => tr('Backup locale già presente, ma il retry delle destinazioni secondarie non è riuscito: _ERROR_', [
-                        '_ERROR_' => $e->getMessage(),
-                    ]),
+                    'message' => tr('Backup locale già presente, ma il retry delle destinazioni secondarie non è riuscito.'),
                 ];
             }
 
@@ -42,12 +40,10 @@ class BackupTask extends Manager
 
         try {
             $job = BackupManager::daily();
-        } catch (Throwable $e) {
+        } catch (Throwable) {
             return [
                 'response' => 2,
-                'message' => tr('Errore durante la creazione del backup: _ERROR_', [
-                    '_ERROR_' => $e->getMessage(),
-                ]),
+                'message' => tr('Errore durante la creazione del backup.'),
             ];
         }
 
@@ -55,6 +51,13 @@ class BackupTask extends Manager
             return [
                 'response' => 2,
                 'message' => tr('Un’altra operazione di backup è già in corso'),
+            ];
+        }
+
+        if (!empty($job['collision'])) {
+            return [
+                'response' => 2,
+                'message' => tr('Creazione annullata per evitare la sovrascrittura di un backup con lo stesso nome.'),
             ];
         }
 
@@ -68,9 +71,7 @@ class BackupTask extends Manager
         if (!empty($job['distribution_error'])) {
             return [
                 'response' => 2,
-                'message' => tr('Backup locale completato, ma la distribuzione verso le destinazioni secondarie non è stata completata: _ERROR_', [
-                    '_ERROR_' => $job['distribution_error'],
-                ]),
+                'message' => tr('Backup locale completato, ma la distribuzione verso le destinazioni secondarie non è stata completata.'),
             ];
         }
 

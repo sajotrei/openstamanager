@@ -25,4 +25,24 @@ class BackupManagerTest extends TestCase
             }
         }
     }
+
+    public function testCollisionGuardDetectsExistingFileWithoutChangingIt(): void
+    {
+        $path = tempnam(sys_get_temp_dir(), 'osm-backup-collision-');
+        $this->assertNotFalse($path);
+        file_put_contents($path, 'preserve-me');
+
+        $collision = new ReflectionMethod(BackupManager::class, 'hasCollision');
+
+        try {
+            $this->assertTrue($collision->invoke(null, $path));
+            $this->assertSame('preserve-me', file_get_contents($path));
+        } finally {
+            if (is_string($path) && file_exists($path)) {
+                unlink($path);
+            }
+        }
+
+        $this->assertFalse($collision->invoke(null, $path));
+    }
 }
