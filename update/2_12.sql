@@ -26,7 +26,7 @@ INSERT INTO `zz_settings` (`nome`, `valore`, `tipo`, `editable`, `sezione`, `ord
 
 INSERT INTO `zz_settings_lang` (`id_lang`, `id_record`, `title`, `help`) VALUES
 (1, (SELECT `id` FROM `zz_settings` WHERE `nome` = 'Login logo'), 'Login', 'Carica un\'immagine da visualizzare nella schermata di login. Dimensioni consigliate: 489x91 px. Se non viene caricato nessun file, viene utilizzato il logo predefinito.'),
-(2, (SELECT `id` FROM `zz_settings` WHERE `nome` = 'Login logo'), 'Login', 'Upload an image to display on the login screen. Recommended dimensions: 489x91 px. If no file is uploaded, the default logo is used.');
+(2, (SELECT `id` FROM `zz_settings` WHERE `nome` = 'Login logo'), 'Login', 'Upload an image to display in the login screen. Recommended dimensions: 489x91 px. If no file is uploaded, the default logo is used.');
 
 -- Impostazioni per i loghi del menu laterale
 INSERT INTO `zz_settings` (`nome`, `valore`, `tipo`, `editable`, `sezione`, `order`, `is_user_setting`) VALUES
@@ -40,7 +40,7 @@ INSERT INTO `zz_settings_lang` (`id_lang`, `id_record`, `title`, `help`) VALUES
 (2, (SELECT `id` FROM `zz_settings` WHERE `nome` = 'Logo menu quadrato / favicon'), 'Collapsed menu logo', 'Upload an image to display in the sidebar when collapsed (favicon/square). Recommended dimensions: 1041x1024 px. If no file is uploaded, the default logo is used.');
 
 -- Gestione traduzione nome gruppo nella vista del modulo Utenti e permessi
-UPDATE `zz_modules` SET `options` = 'SELECT\r\n |select|\r\nFROM\r\n `zz_groups`\r\n LEFT JOIN `zz_groups_lang` ON (`zz_groups`.`id` = `zz_groups_lang`.`id_record` AND `zz_groups_lang`.|lang|)\r\n LEFT JOIN (SELECT `zz_users`.`id_gruppo`, COUNT(`zz_users`.`id`) AS num FROM `zz_users` GROUP BY `id_gruppo`) AS utenti ON `zz_groups`.`id` = `utenti`.`id_gruppo`\r\n LEFT JOIN (SELECT `zz_users`.`id_gruppo`, COUNT(`zz_users`.`id`) AS num FROM `zz_users` WHERE `zz_users`.`enabled` = 1 GROUP BY `id_gruppo`) AS utenti_abilitati ON `zz_groups`.`id` = `utenti_abilitati`.`id_gruppo`\r\n LEFT JOIN (SELECT `zz_users`.`id_gruppo`, COUNT(`zz_tokens`.`id`) AS num FROM `zz_users` INNER JOIN `zz_tokens` ON `zz_users`.`id` = `zz_tokens`.`id_utente` WHERE `zz_tokens`.`enabled` = 1 GROUP BY `id_gruppo`) AS api_abilitate ON `zz_groups`.`id` = `api_abilitate`.`id_gruppo`\r\n LEFT JOIN (SELECT `zz_modules_lang`.`title`, `zz_modules`.`id` FROM `zz_modules` LEFT JOIN `zz_modules_lang` ON (`zz_modules_lang`.`id_record` = `zz_modules`.`id` AND `zz_modules_lang`.|lang|)) AS `module` ON `module`.`id` = `zz_groups`.`id_module_start`\r\nWHERE\r\n 1=1\r\nHAVING\r\n 2=2\r\nORDER BY\r\n `id`, `nome` ASC' WHERE `zz_modules`.`name` = 'Utenti e permessi';
+UPDATE `zz_modules` SET `options` = 'SELECT\r\n |select|\r\nFROM\r\n `zz_groups`\r\n LEFT JOIN `zz_groups_lang` ON (`zz_groups`.`id` = `zz_groups_lang`.`id_record` AND `zz_groups_lang`.|lang|)\r\n LEFT JOIN (SELECT `zz_users`.`id_gruppo`, COUNT(`zz_users`.`id`) AS num FROM `zz_users` GROUP BY `id_gruppo`) AS utenti ON `zz_groups`.`id` = `utenti`.`id_gruppo`\r\n LEFT JOIN (SELECT `zz_users`.`id_gruppo`, COUNT(`zz_users`.`id`) AS num FROM `zz_users` WHERE `zz_users`.`enabled` = 1 GROUP BY `id_gruppo`) AS utenti_abilitati ON `zz_groups`.`id` = `utenti_abilitati`.`id_gruppo`\r\n LEFT JOIN (SELECT `zz_users`.`id_gruppo`, COUNT(`zz_users`.`id`) AS num FROM `zz_users` INNER JOIN `zz_tokens` ON `zz_users`.`id` = `zz_tokens`.`id_utente` WHERE `zz_tokens`.`enabled` = 1 GROUP BY `id_gruppo`) AS api_abilitate ON `zz_groups`.`id` = `api_abilitate`.`id_gruppo`\r\n LEFT JOIN (SELECT `zz_modules_lang`.`title`, `zz_modules`.`id` FROM `zz_modules` LEFT JOIN `zz_modules_lang` ON (`zz_modules_lang`.`id_record` = `zz_modules`.`id` AND `zz_modules_lang`.|lang|)) AS `module` ON `module`.`id` = `zz_groups`.`id_module_start`\r\nWHERE\r\n 1=1\r\nHAVING\r\n 2=2\r\nORDER BY\r\n `id`, `nome` ASC' WHERE `zz_modules`.`name` = 'Utenti e permessi';
 
 UPDATE `zz_views` SET `query` = '`zz_groups_lang`.`title`' WHERE `zz_views`.`id_module` = (SELECT `id` FROM `zz_modules` WHERE `name`='Utenti e permessi') AND `zz_views`.`name`='Gruppo';
 
@@ -102,3 +102,16 @@ INSERT INTO `zz_settings` (`nome`, `valore`, `tipo`, `editable`, `sezione`, `ord
 INSERT INTO `zz_settings_lang` (`id_lang`, `id_record`, `title`, `help`) VALUES
 (1, (SELECT `id` FROM `zz_settings` WHERE `nome` = 'Tipologia anagrafica predefinita'), 'Tipologia anagrafica predefinita', 'Tipologia (Azienda, Ente pubblico o Privato) preselezionata automaticamente nella finestra di aggiunta di una nuova anagrafica. Se non impostata, nessuna tipologia viene preselezionata.'),
 (2, (SELECT `id` FROM `zz_settings` WHERE `nome` = 'Tipologia anagrafica predefinita'), 'Default entity classification', 'Classification (Company, Public entity or Private) automatically preselected in the new entity creation window. If not set, no classification is preselected.');
+
+-- Destinazioni secondarie per la distribuzione dei backup
+CREATE TABLE IF NOT EXISTS `zz_backup_destinations` (
+    `id` INT(11) NOT NULL AUTO_INCREMENT,
+    `id_adapter` INT(11) NOT NULL,
+    `path` VARCHAR(255) NOT NULL DEFAULT 'backups',
+    `enabled` TINYINT(1) NOT NULL DEFAULT 1,
+    `retention` INT(11) NOT NULL DEFAULT 10,
+    PRIMARY KEY (`id`),
+    UNIQUE KEY `unique_backup_destination_adapter_path` (`id_adapter`, `path`),
+    KEY `idx_backup_destination_enabled` (`enabled`),
+    CONSTRAINT `zz_backup_destinations_ibfk_1` FOREIGN KEY (`id_adapter`) REFERENCES `zz_storage_adapters` (`id`) ON UPDATE CASCADE ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
