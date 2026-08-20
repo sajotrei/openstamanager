@@ -99,9 +99,9 @@ class BackupManager
      *
      * @return resource|null
      */
-    protected static function acquireLock()
+    protected static function acquireLock(?string $lock_path = null)
     {
-        $lock_path = \Backup::getDirectory().'/.osm-backup-job.lock';
+        $lock_path ??= \Backup::getDirectory().'/.osm-backup-job.lock';
         $handle = fopen($lock_path, 'c');
 
         if ($handle === false) {
