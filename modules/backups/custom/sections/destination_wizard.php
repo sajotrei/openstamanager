@@ -39,7 +39,7 @@
                             </div>
                             <div class="form-group col-md-6">
                                 <label><?php echo tr('Percorso relativo nell’adattatore'); ?></label>
-                                <input type="text" name="path" id="backup-wizard-path" class="form-control" maxlength="255" value="backups" placeholder="backups">
+                                <input type="text" name="existing_path" id="backup-wizard-path" class="form-control" maxlength="255" value="backups" placeholder="backups">
                             </div>
                         </div>
                     </div>
@@ -49,7 +49,7 @@
                             <div class="row">
                                 <div class="form-group col-md-6">
                                     <label><?php echo tr('Nome'); ?></label>
-                                    <input type="text" name="name" id="backup-wizard-name" class="form-control" maxlength="255" placeholder="NAS Ufficio">
+                                    <input type="text" name="ftp_name" id="backup-wizard-name" class="form-control" maxlength="255" placeholder="NAS Ufficio">
                                 </div>
                                 <div class="form-group col-md-6">
                                     <label><?php echo tr('Host / IP'); ?></label>
@@ -95,7 +95,7 @@
                                 </div>
                                 <div class="form-group col-md-3">
                                     <label><?php echo tr('Cartella remota'); ?></label>
-                                    <input type="text" name="path" id="backup-wizard-ftp-path" class="form-control" maxlength="255" value="backups" placeholder="cliente-osm/backups">
+                                    <input type="text" name="ftp_path" id="backup-wizard-ftp-path" class="form-control" maxlength="255" value="backups" placeholder="cliente-osm/backups">
                                 </div>
                             </div>
                         </div>
@@ -104,7 +104,7 @@
                             <div class="row">
                                 <div class="form-group col-md-5">
                                     <label><?php echo tr('Nome'); ?></label>
-                                    <input type="text" name="name" id="backup-wizard-local-name" class="form-control" maxlength="255" placeholder="Copia locale secondaria">
+                                    <input type="text" name="local_name" id="backup-wizard-local-name" class="form-control" maxlength="255" placeholder="Copia locale secondaria">
                                 </div>
                                 <div class="form-group col-md-7">
                                     <label><?php echo tr('Cartella locale relativa a OSM'); ?></label>
@@ -151,7 +151,7 @@ function refreshBackupWizardMode() {
     $('[data-backup-wizard-mode]').hide();
     $('[data-backup-wizard-mode="' + mode + '"]').show();
 
-    // Disabilita i campi nascosti per evitare valori duplicati con lo stesso name.
+    // Disabilita i campi nascosti anche se i nomi POST sono univoci: evita invii di dati non pertinenti alla modalità scelta.
     $('[data-backup-wizard-mode] :input').prop('disabled', true);
     $('[data-backup-wizard-mode="' + mode + '"] :input').prop('disabled', false);
 }

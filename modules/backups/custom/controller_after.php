@@ -14,7 +14,7 @@ window.creaBackup = function (button) {
             '<select id="swal-backup-select" class="form-control">' +
             '<option value=""><?php echo addslashes(tr('Non escludere nulla')); ?></option>' +
             '<option value="exclude_attachments">📎 <?php echo addslashes(tr('Allegati')); ?></option>' +
-            '<option value="only_database">🗃️ <?php echo addslashes(tr('Tutto tranne database')); ?></option>' +
+            '<option value="only_database">🗃️ <?php echo addslashes(tr('Solo database')); ?></option>' +
             '</select>' +
             '</div>',
         showCancelButton: true,

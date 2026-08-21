@@ -91,13 +91,16 @@ switch ($op) {
 
     case 'backup_destination_wizard_save':
         $requested_enabled = (int) post('enabled_requested') === 1;
+        $mode = (string) post('mode');
+        $name = $mode === 'ftp' ? post('ftp_name') : ($mode === 'local' ? post('local_name') : null);
+        $path = $mode === 'ftp' ? post('ftp_path') : ($mode === 'existing' ? post('existing_path') : '');
 
         try {
             $destination = BackupAdapterService::saveDestination([
                 'id' => (int) post('id'),
-                'mode' => post('mode'),
+                'mode' => $mode,
                 'id_adapter' => (int) post('id_adapter'),
-                'name' => post('name'),
+                'name' => $name,
                 'host' => post('host'),
                 'port' => post('port'),
                 'username' => post('username'),
@@ -106,7 +109,7 @@ switch ($op) {
                 'passive' => post('passive'),
                 'timeout' => post('timeout'),
                 'local_directory' => post('local_directory'),
-                'path' => post('path'),
+                'path' => $path,
                 'retention' => post('retention'),
             ]);
 
@@ -138,9 +141,14 @@ switch ($op) {
             break;
         }
 
-        if (!$destination->enabled && $destination->last_test_success !== true) {
-            flash()->warning(tr('Testa con successo la destinazione prima di attivarla.'));
-            break;
+        if (!$destination->enabled) {
+            $test = BackupRetryService::test($destination);
+            if (empty($test['success'])) {
+                flash()->warning(tr('La destinazione resta disattivata perché il test corrente non è riuscito: _ERROR_', [
+                    '_ERROR_' => $test['message'] ?? tr('Errore non specificato.'),
+                ]));
+                break;
+            }
         }
 
         $destination->enabled = !$destination->enabled;

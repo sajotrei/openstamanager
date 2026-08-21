@@ -1,4 +1,9 @@
 <?php
+
+use Modules\Backups\BackupAdapterService;
+use Modules\FileAdapters\Adapters\FTPAdapter;
+use Modules\FileAdapters\Adapters\LocalAdapter;
+
 // Rendering lista destinazioni; variabili preparate da destinations.php.
 ?>
 <div class="row mt-3">

@@ -9,7 +9,7 @@ class BackupModulePackageTest extends TestCase
         $module = parse_ini_file(__DIR__.'/../modules/backups/MODULE');
 
         $this->assertSame('Backup', $module['name'] ?? null);
-        $this->assertSame('1.2.0', $module['version'] ?? null);
+        $this->assertSame('1.2.1', $module['version'] ?? null);
         $this->assertSame('2.10.4', $module['compatibility'] ?? null);
         $this->assertSame('backups', $module['directory'] ?? null);
     }
@@ -52,6 +52,12 @@ class BackupModulePackageTest extends TestCase
         $this->assertStringNotContainsString('INSERT INTO `zz_tasks`', $script);
     }
 
+    public function test121IsCodeOnlyUpgradeAfter120Migration(): void
+    {
+        $this->assertFileDoesNotExist(__DIR__.'/../modules/backups/update/1_2_1.php');
+        $this->assertFileDoesNotExist(__DIR__.'/../modules/backups/update/1_2_1.sql');
+    }
+
     public function testWizardDoesNotExposeRawAdapterJson(): void
     {
         $section = file_get_contents(__DIR__.'/../modules/backups/custom/sections/destination_wizard.php');
@@ -83,6 +89,19 @@ class BackupModulePackageTest extends TestCase
         $this->assertStringContainsString('$structure->permission !== \'rw\'', $actions);
         $this->assertStringContainsString("\$_SERVER['REQUEST_METHOD']", $actions);
         $this->assertStringContainsString("!== 'POST'", $actions);
+        $this->assertStringContainsString("\$mode === 'ftp' ? post('ftp_name')", $actions);
+        $this->assertStringContainsString("\$mode === 'ftp' ? post('ftp_path')", $actions);
+    }
+
+    public function testEnablingDestinationPerformsFreshConnectionTest(): void
+    {
+        $actions = file_get_contents(__DIR__.'/../modules/backups/custom/actions.php');
+        $start = strpos($actions, "case 'backup_destination_toggle':");
+        $end = strpos($actions, "case 'backup_destination_delete':", $start);
+        $toggle = substr($actions, $start, $end - $start);
+
+        $this->assertStringContainsString('BackupRetryService::test($destination)', $toggle);
+        $this->assertStringContainsString('resta disattivata', $toggle);
     }
 
     public function testDistributorStreamsAndRetryServiceOwnsBackoff(): void
