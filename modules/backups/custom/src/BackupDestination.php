@@ -15,9 +15,14 @@ class BackupDestination extends Model
 
     protected $casts = [
         'enabled' => 'boolean',
+        'managed_adapter' => 'boolean',
         'retention' => 'integer',
+        'retry_count' => 'integer',
         'last_attempt_at' => 'datetime',
         'last_success_at' => 'datetime',
+        'next_retry_at' => 'datetime',
+        'last_test_at' => 'datetime',
+        'last_test_success' => 'boolean',
     ];
 
     public function adapter()

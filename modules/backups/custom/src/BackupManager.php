@@ -61,7 +61,7 @@ class BackupManager
             }
 
             try {
-                $distribution = BackupDistributor::distribute($backup);
+                $distribution = BackupRetryService::distribute($backup);
 
                 return self::result(true, false, $backup, $distribution);
             } catch (Throwable) {

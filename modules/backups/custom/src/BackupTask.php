@@ -7,15 +7,6 @@ use Throwable;
 
 class BackupTask extends Manager
 {
-    public function needsExecution()
-    {
-        if (!setting('Backup automatico')) {
-            return false;
-        }
-
-        return !\Backup::isDailyComplete() || BackupDistributor::needsRetryForLatest();
-    }
-
     public function execute()
     {
         if (!setting('Backup automatico')) {
@@ -27,11 +18,18 @@ class BackupTask extends Manager
 
         if (\Backup::isDailyComplete()) {
             try {
-                $results = BackupDistributor::retryLatest();
+                $results = BackupRetryService::retryLatest();
             } catch (Throwable) {
                 return [
                     'response' => 2,
                     'message' => tr('Backup locale già presente, ma il retry delle destinazioni secondarie non è riuscito.'),
+                ];
+            }
+
+            if (empty($results) && BackupRetryService::hasPendingRetryForLatest()) {
+                return [
+                    'response' => 2,
+                    'message' => tr('Backup locale già presente; le destinazioni fallite sono in attesa del prossimo retry pianificato.'),
                 ];
             }
 
