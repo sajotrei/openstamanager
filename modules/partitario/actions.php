@@ -182,7 +182,7 @@ switch (post('op')) {
             flash()->warning($e->getMessage());
         } catch (Throwable $e) {
             flash()->error(tr('Operazione non completata. Nessuna scrittura parziale è stata mantenuta.'));
-            logger()->error($e);
+            error_log('[Partitario - Gestione esercizio] '.$e->getMessage());
         }
 
         break;
