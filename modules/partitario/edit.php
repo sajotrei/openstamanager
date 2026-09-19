@@ -20,21 +20,42 @@
 
 include_once __DIR__.'/../../core.php';
 
-// Verifico se è già stata eseguita l'apertura bilancio
-$bilancio_gia_aperto = $dbo->fetchNum('SELECT id FROM co_movimenti WHERE is_apertura=1 AND data BETWEEN '.prepare($_SESSION['period_start']).' AND '.prepare($_SESSION['period_end']));
+use Modules\Partitario\Esercizio;
 
-$msg = tr('Sei sicuro di voler aprire il bilancio?');
-$btn_class = 'btn-info';
+$esercizio = new Esercizio($_SESSION['period_start'], $_SESSION['period_end']);
+$apertura = $esercizio->getPreview('apertura');
+$chiusura = $esercizio->getPreview('chiusura');
 
-if ($bilancio_gia_aperto) {
-    $msg .= ' '.tr('I movimenti di apertura già esistenti verranno annullati e ricreati').'.';
-    $btn_class = 'btn-default';
+if ($chiusura['existing']['present']) {
+    $exercise_status = tr('Chiuso');
+    $exercise_class = 'badge-success';
+} elseif ($apertura['existing']['present']) {
+    $exercise_status = tr('In corso');
+    $exercise_class = 'badge-info';
+} elseif (!$esercizio->isAnnual()) {
+    $exercise_status = tr('Periodo non annuale');
+    $exercise_class = 'badge-secondary';
+} else {
+    $exercise_status = tr('Da gestire');
+    $exercise_class = 'badge-warning';
 }
 
+$exercise_url = base_path_osm().'/modules/partitario/gestione_esercizio.php?id_module='.$id_module;
+
 echo '
-<div class="row">
-    <div class="offset-md-4 col-md-3">
-            <input type="text" class="form-control form-control-lg text-center" id="input-cerca" placeholder="'.tr('Cerca').'...">
+<div class="row align-items-center mb-3">
+    <div class="col-md-5">
+        <div class="card card-outline card-info mb-0">
+            <div class="card-body py-2">
+                <strong><i class="fa fa-calendar"></i> '.tr('Gestione esercizio').'</strong>
+                <span class="badge '.$exercise_class.' ml-2">'.$exercise_status.'</span>
+                <div class="small text-muted">'.dateFormat($_SESSION['period_start']).' - '.dateFormat($_SESSION['period_end']).'</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-3">
+        <input type="text" class="form-control form-control-lg text-center" id="input-cerca" placeholder="'.tr('Cerca').'...">
     </div>
 
     <div class="col-md-1">
@@ -43,9 +64,9 @@ echo '
         </button>
     </div>
 
-    <div class="col-md-4 text-right">
-        <button type="button" class="btn btn-lg '.$btn_class.'" data-op="apri-bilancio" data-title="'.tr('Apertura bilancio').'" data-backto="record-list" data-msg="'.$msg.'" data-button="'.tr('Riprendi saldi').'" data-class="btn btn-lg btn-warning" onclick="message( this );">
-            <i class="fa fa-folder-open"></i> '.tr('Apertura bilancio').'
+    <div class="col-md-3 text-right">
+        <button type="button" class="btn btn-lg btn-info" onclick="openModal(\''.tr('Gestione esercizio').'\', \''.$exercise_url.'\');">
+            <i class="fa fa-cog"></i> '.tr('Gestisci').'
         </button>
     </div>
 </div>';
