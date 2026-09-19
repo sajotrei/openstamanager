@@ -98,10 +98,10 @@ class Esercizio
             $errors[] = tr('Il conto tecnico necessario non è configurato correttamente.');
         }
         if ($existing['present']) {
-            $warnings[] = tr('L_operazione risulta già eseguita e non verrà ripetuta.');
+            $warnings[] = tr('L\'operazione risulta già eseguita e non verrà ripetuta.');
         }
         if (round($debit - $credit, 6) !== 0.0) {
-            $errors[] = tr('L_anteprima non risulta in pareggio.');
+            $errors[] = tr('L\'anteprima non risulta in pareggio.');
         }
 
         return [
@@ -138,7 +138,7 @@ class Esercizio
             $preview = $this->getPreview($operation);
             if (!$preview['can_execute']) {
                 throw new DomainException($preview['existing']['present']
-                    ? tr('L_operazione risulta già eseguita. Nessuna registrazione è stata modificata.')
+                    ? tr('L\'operazione risulta già eseguita. Nessuna registrazione è stata modificata.')
                     : implode(' ', $preview['errors']));
             }
 
