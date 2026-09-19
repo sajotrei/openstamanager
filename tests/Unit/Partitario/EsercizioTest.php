@@ -27,6 +27,7 @@ class EsercizioTest extends TestCase
 
         $this->assertFalse($esercizio->isAnnual());
     }
+
     public function testCalcoloAperturaMantieneSegniEQuadra(): void
     {
         $result = Esercizio::calculateEntries('apertura', [
@@ -63,4 +64,20 @@ class EsercizioTest extends TestCase
         $this->assertSame(0.0, $result['credit']);
     }
 
+    public function testCentottantaquattroContiCreanoCentottantacinqueMovimentiInPareggio(): void
+    {
+        $rows = [];
+        for ($i = 1; $i <= 184; ++$i) {
+            $rows[] = [
+                'id' => $i,
+                'descrizione' => 'Conto '.$i,
+                'totale' => $i % 2 === 0 ? 100.0 : -100.0,
+            ];
+        }
+
+        $result = Esercizio::calculateEntries('apertura', $rows, 999, 'Apertura conti patrimoniali');
+
+        $this->assertCount(185, $result['entries']);
+        $this->assertEqualsWithDelta($result['debit'], $result['credit'], 0.000001);
+    }
 }
