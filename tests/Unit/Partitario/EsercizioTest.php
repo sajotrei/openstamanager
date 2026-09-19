@@ -27,4 +27,40 @@ class EsercizioTest extends TestCase
 
         $this->assertFalse($esercizio->isAnnual());
     }
+    public function testCalcoloAperturaMantieneSegniEQuadra(): void
+    {
+        $result = Esercizio::calculateEntries('apertura', [
+            ['id' => 1, 'descrizione' => 'Cassa', 'totale' => 100.0],
+            ['id' => 2, 'descrizione' => 'Fornitore', 'totale' => -40.0],
+        ], 99, 'Apertura conti patrimoniali');
+
+        $this->assertSame(3, count($result['entries']));
+        $this->assertSame(100.0, $result['debit']);
+        $this->assertSame(100.0, $result['credit']);
+        $this->assertSame(-60.0, $result['entries'][2]['totale']);
+    }
+
+    public function testCalcoloChiusuraInverteSegniEQuadra(): void
+    {
+        $result = Esercizio::calculateEntries('chiusura', [
+            ['id' => 1, 'descrizione' => 'Cassa', 'totale' => 100.0],
+            ['id' => 2, 'descrizione' => 'Fornitore', 'totale' => -40.0],
+        ], 98, 'Chiusura conti patrimoniali');
+
+        $this->assertSame(-100.0, $result['entries'][0]['totale']);
+        $this->assertSame(40.0, $result['entries'][1]['totale']);
+        $this->assertSame(60.0, $result['entries'][2]['totale']);
+        $this->assertSame(100.0, $result['debit']);
+        $this->assertSame(100.0, $result['credit']);
+    }
+
+    public function testNessunSaldoNonCreaContropartitaZero(): void
+    {
+        $result = Esercizio::calculateEntries('apertura', [], 99, 'Apertura conti patrimoniali');
+
+        $this->assertSame([], $result['entries']);
+        $this->assertSame(0.0, $result['debit']);
+        $this->assertSame(0.0, $result['credit']);
+    }
+
 }
