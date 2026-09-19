@@ -244,7 +244,7 @@ class Esercizio
 
     protected function accountExists(int $id): bool
     {
-        return $id > 0 && database()->fetchNum('SELECT id FROM co_pianodeiconti3 WHERE id='.prepare($id)) === 1;
+        return $id > 0 && database()->fetchNum('SELECT id FROM co_pianodeiconti3 WHERE id='.prepare($id)) > 0;
     }
 
     protected function getAccountDescription(int $id): string
