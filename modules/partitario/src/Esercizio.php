@@ -209,7 +209,7 @@ class Esercizio
         $previousStart = (new \DateTimeImmutable($this->start))->modify('-1 year')->format('Y-m-d');
 
         return database()->fetchArray(
-            'SELECT c3.id, CONCAT(c2.numero, \' . \', c3.numero, \' \, c3.descrizione) AS descrizione, SUM(m.totale) AS totale
+            'SELECT c3.id, CONCAT(c2.numero, ".", c3.numero, " ", c3.descrizione) AS descrizione, SUM(m.totale) AS totale
             FROM co_pianodeiconti3 c3
             INNER JOIN co_pianodeiconti2 c2 ON c3.idpianodeiconti2=c2.id
             INNER JOIN co_pianodeiconti1 c1 ON c2.idpianodeiconti1=c1.id
@@ -227,7 +227,7 @@ class Esercizio
     protected function getClosingBalances(int $closingAccount): array
     {
         return database()->fetchArray(
-            'SELECT c3.id, CONCAT(c2.numero, \' . \', c3.numero, \' \, c3.descrizione) AS descrizione, SUM(m.totale) AS totale
+            'SELECT c3.id, CONCAT(c2.numero, ".", c3.numero, " ", c3.descrizione) AS descrizione, SUM(m.totale) AS totale
             FROM co_pianodeiconti3 c3
             INNER JOIN co_pianodeiconti2 c2 ON c3.idpianodeiconti2=c2.id
             INNER JOIN co_pianodeiconti1 c1 ON c2.idpianodeiconti1=c1.id
@@ -250,7 +250,7 @@ class Esercizio
     protected function getAccountDescription(int $id): string
     {
         $row = database()->fetchOne(
-            'SELECT CONCAT(c2.numero, \' . \', c3.numero, \' \, c3.descrizione) AS descrizione
+            'SELECT CONCAT(c2.numero, ".", c3.numero, " ", c3.descrizione) AS descrizione
              FROM co_pianodeiconti3 c3 INNER JOIN co_pianodeiconti2 c2 ON c2.id=c3.idpianodeiconti2
              WHERE c3.id='.prepare($id)
         );
