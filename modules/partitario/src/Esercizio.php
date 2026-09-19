@@ -48,6 +48,8 @@ class Esercizio
         $settings = $this->getSettings();
         $date = $operation === 'apertura' ? $this->start : $this->end;
         $existing = $this->getExisting($operation, $date);
+        $openingExisting = $this->getExisting('apertura', $this->start);
+        $closingExisting = $this->getExisting('chiusura', $this->end);
         $rows = $operation === 'apertura'
             ? $this->getOpeningBalances($settings['chiusura'])
             : $this->getClosingBalances($settings['chiusura']);
@@ -74,6 +76,15 @@ class Esercizio
         }
         if ($existing['present']) {
             $warnings[] = tr('L\'operazione risulta già eseguita e non verrà ripetuta.');
+        }
+        if ($operation === 'apertura' && !$existing['present'] && $closingExisting['present']) {
+            $errors[] = tr('Apertura non rilevata: l\'esercizio risulta già chiuso. Verificare lo storico prima di qualsiasi intervento.');
+        }
+        if ($operation === 'chiusura' && !$existing['present'] && !$openingExisting['present']) {
+            $previousRows = $this->getOpeningBalances($settings['chiusura']);
+            if (!empty($previousRows)) {
+                $errors[] = tr('Prima di chiudere l\'esercizio è necessario registrare l\'apertura dei saldi precedenti.');
+            }
         }
         if (round($debit - $credit, 6) !== 0.0) {
             $errors[] = tr('L\'anteprima non risulta in pareggio.');
