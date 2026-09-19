@@ -44,8 +44,8 @@ foreach ($previews as $operation => $preview) {
                     <span class="badge <?php echo $statusClass; ?> ml-2"><?php echo $status; ?></span>
                     <div class="small text-muted mt-1">
                         <?php echo $operation === 'apertura'
-                            ? tr('Riporta i saldi patrimoniali dell_esercizio precedente.')
-                            : tr('Chiude i saldi patrimoniali alla fine dell_esercizio.'); ?>
+                            ? tr('Riporta i saldi patrimoniali dell\'esercizio precedente.')
+                            : tr('Chiude i saldi patrimoniali alla fine dell\'esercizio.'); ?>
                     </div>
                 </div>
                 <div class="col-md-4 mt-2 mt-md-0">
@@ -124,7 +124,7 @@ foreach ($previews as $operation => $preview) {
                         data-op="<?php echo $operation === 'apertura' ? 'apri-bilancio' : 'chiudi-bilancio'; ?>"
                         data-title="<?php echo $title; ?>"
                         data-backto="record-list"
-                        data-msg="<?php echo tr('Confermi l_operazione per il periodo selezionato? Le scritture esistenti non saranno cancellate o rigenerate.'); ?>"
+                        data-msg="<?php echo tr('Confermi l\'operazione per il periodo selezionato? Le scritture esistenti non saranno cancellate o rigenerate.'); ?>"
                         data-button="<?php echo tr('Conferma'); ?>"
                         data-class="btn btn-primary"
                         onclick="message(this);">
