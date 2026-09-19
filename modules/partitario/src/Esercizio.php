@@ -52,41 +52,16 @@ class Esercizio
             ? $this->getOpeningBalances($settings['chiusura'])
             : $this->getClosingBalances($settings['chiusura']);
 
-        $entries = [];
-        $total = 0.0;
-        foreach ($rows as $row) {
-            $value = (float) $row['totale'];
-            $entries[] = [
-                'idconto' => (int) $row['id'],
-                'descrizione' => $row['descrizione'],
-                'totale' => $operation === 'apertura' ? $value : -$value,
-                'saldo_origine' => $value,
-                'contropartita' => false,
-            ];
-            $total += $value;
-        }
-
-        $counterpart = $operation === 'apertura' ? -$total : $total;
         $counterpartId = $operation === 'apertura' ? $settings['apertura'] : $settings['chiusura'];
-        if ($rows) {
-            $entries[] = [
-                'idconto' => $counterpartId,
-                'descrizione' => $this->getAccountDescription($counterpartId),
-                'totale' => $counterpart,
-                'saldo_origine' => null,
-                'contropartita' => true,
-            ];
-        }
-
-        $debit = 0.0;
-        $credit = 0.0;
-        foreach ($entries as $entry) {
-            if ($entry['totale'] >= 0) {
-                $debit += $entry['totale'];
-            } else {
-                $credit += abs($entry['totale']);
-            }
-        }
+        $calculation = self::calculateEntries(
+            $operation,
+            $rows,
+            $counterpartId,
+            $this->getAccountDescription($counterpartId)
+        );
+        $entries = $calculation['entries'];
+        $debit = $calculation['debit'];
+        $credit = $calculation['credit'];
 
         $errors = [];
         $warnings = [];
@@ -117,6 +92,53 @@ class Esercizio
             'errors' => $errors,
             'warnings' => $warnings,
             'can_execute' => !$errors && !$existing['present'] && !empty($rows),
+        ];
+    }
+
+    public static function calculateEntries(string $operation, array $rows, int $counterpartId, string $counterpartDescription): array
+    {
+        if (!in_array($operation, ['apertura', 'chiusura'], true)) {
+            throw new DomainException(tr('Operazione non valida.'));
+        }
+
+        $entries = [];
+        $total = 0.0;
+        foreach ($rows as $row) {
+            $value = (float) $row['totale'];
+            $entries[] = [
+                'idconto' => (int) $row['id'],
+                'descrizione' => $row['descrizione'],
+                'totale' => $operation === 'apertura' ? $value : -$value,
+                'saldo_origine' => $value,
+                'contropartita' => false,
+            ];
+            $total += $value;
+        }
+
+        if ($rows) {
+            $entries[] = [
+                'idconto' => $counterpartId,
+                'descrizione' => $counterpartDescription,
+                'totale' => $operation === 'apertura' ? -$total : $total,
+                'saldo_origine' => null,
+                'contropartita' => true,
+            ];
+        }
+
+        $debit = 0.0;
+        $credit = 0.0;
+        foreach ($entries as $entry) {
+            if ($entry['totale'] >= 0) {
+                $debit += $entry['totale'];
+            } else {
+                $credit += abs($entry['totale']);
+            }
+        }
+
+        return [
+            'entries' => $entries,
+            'debit' => $debit,
+            'credit' => $credit,
         ];
     }
 
