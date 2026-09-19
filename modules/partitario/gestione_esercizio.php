@@ -19,6 +19,7 @@ $previews = [
     'apertura' => $esercizio->getPreview('apertura'),
     'chiusura' => $esercizio->getPreview('chiusura'),
 ];
+$can_write = Permissions::check('rw', false);
 
 ?>
 <div class="mb-3">
@@ -35,6 +36,17 @@ foreach ($previews as $operation => $preview) {
     $status = $alreadyDone ? tr('Eseguita') : ($preview['errors'] ? tr('Bloccata') : tr('Da eseguire'));
     $statusClass = $alreadyDone ? 'badge-success' : ($preview['errors'] ? 'badge-danger' : 'badge-info');
     $detailId = 'exercise-'.$operation.'-details';
+    $actionLabel = $operation === 'apertura' ? tr('Apri esercizio') : tr('Chiudi esercizio');
+    $confirmLabel = $operation === 'apertura' ? tr('Conferma apertura') : tr('Conferma chiusura');
+    $op = $operation === 'apertura' ? 'apri-bilancio' : 'chiudi-bilancio';
+    $confirmMessage = '<div class="text-left"><strong>'.$title.'</strong><br>'.
+        dateFormat($preview['period_start']).' - '.dateFormat($preview['period_end']).'<br><br>'.
+        tr('Data registrazione').': <strong>'.dateFormat($preview['date']).'</strong><br>'.
+        tr('Conti interessati').': <strong>'.$preview['accounts_count'].'</strong><br>'.
+        tr('Totale Dare').': <strong>'.moneyFormat($preview['debit'], 2).'</strong><br>'.
+        tr('Totale Avere').': <strong>'.moneyFormat($preview['credit'], 2).'</strong><br>'.
+        tr('Pareggio').': <strong>'.(abs($preview['debit'] - $preview['credit']) < 0.000001 ? tr('Verificato') : tr('Non verificato')).'</strong><br><br>'.
+        tr('Le scritture esistenti non saranno cancellate o rigenerate.').'</div>';
     ?>
     <div class="card card-outline card-secondary mb-3">
         <div class="card-body">
@@ -63,6 +75,20 @@ foreach ($previews as $operation => $preview) {
                     <button type="button" class="btn btn-sm btn-outline-secondary" data-toggle="collapse" data-target="#<?php echo $detailId; ?>">
                         <i class="fa fa-search"></i> <?php echo tr('Dettagli'); ?>
                     </button>
+                    <?php if ($alreadyDone && count($preview['existing']['mastrini']) === 1) { ?>
+                        <?php echo Modules::link('Prima nota', (int) $preview['existing']['mastrini'][0], tr('Visualizza Mastrino'), 'btn btn-sm btn-info ml-1'); ?>
+                    <?php } elseif ($preview['can_execute'] && $can_write) { ?>
+                        <button type="button" class="btn btn-sm btn-primary ml-1"
+                            data-op="<?php echo $op; ?>"
+                            data-title="<?php echo $title; ?>"
+                            data-backto="record-list"
+                            data-msg="<?php echo htmlspecialchars($confirmMessage, ENT_QUOTES); ?>"
+                            data-button="<?php echo $confirmLabel; ?>"
+                            data-class="btn btn-primary"
+                            onclick="message(this);">
+                            <i class="fa fa-check"></i> <?php echo $actionLabel; ?>
+                        </button>
+                    <?php } ?>
                 </div>
             </div>
 
@@ -118,19 +144,7 @@ foreach ($previews as $operation => $preview) {
                     </table>
                 </div>
 
-                <?php if ($preview['can_execute']) { ?>
-                    <button type="button"
-                        class="btn btn-primary"
-                        data-op="<?php echo $operation === 'apertura' ? 'apri-bilancio' : 'chiudi-bilancio'; ?>"
-                        data-title="<?php echo $title; ?>"
-                        data-backto="record-list"
-                        data-msg="<?php echo tr('Confermi l\'operazione per il periodo selezionato? Le scritture esistenti non saranno cancellate o rigenerate.'); ?>"
-                        data-button="<?php echo tr('Conferma'); ?>"
-                        data-class="btn btn-primary"
-                        onclick="message(this);">
-                        <i class="fa fa-check"></i> <?php echo $title; ?>
-                    </button>
-                <?php } ?>
+
             </div>
         </div>
     </div>
