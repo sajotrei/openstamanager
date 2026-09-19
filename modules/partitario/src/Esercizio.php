@@ -15,7 +15,6 @@ namespace Modules\Partitario;
 use DomainException;
 use Modules\PrimaNota\Mastrino;
 use Modules\PrimaNota\Movimento;
-use Throwable;
 
 /**
  * Gestione controllata delle scritture di apertura e chiusura esercizio.
@@ -156,23 +155,23 @@ class Esercizio
     public function execute(string $operation): int
     {
         $database = database();
-        $pdo = $database->getPDO();
-        $lock = 'osm-esercizio-'.sha1($this->start.'|'.$this->end.'|'.$operation);
-        $locked = (int) $database->fetchOne('SELECT GET_LOCK('.prepare($lock).', 10) AS acquired')['acquired'];
+        $connection = $database->getCapsule()->getConnection();
 
-        if ($locked !== 1) {
-            throw new DomainException(tr('Operazione già in corso. Riprovare tra qualche istante.'));
-        }
+        // actions.php apre già una transazione OSM prima di includere il controller
+        // del modulo. Laravel transaction() usa quindi un savepoint sulla stessa
+        // connessione; fuori da actions.php apre invece una normale transazione.
+        return $connection->transaction(function () use ($operation, $database) {
+            $this->lockExercise($database);
 
-        try {
-            $pdo->beginTransaction();
-
-            // Ricalcolo dentro la sezione critica: la conferma non autorizza dati ormai cambiati.
+            // Ricalcolo nella sezione critica: la conferma non autorizza dati
+            // modificati nel frattempo.
             $preview = $this->getPreview($operation);
             if (!$preview['can_execute']) {
-                throw new DomainException($preview['existing']['present']
-                    ? tr('L\'operazione risulta già eseguita. Nessuna registrazione è stata modificata.')
-                    : implode(' ', $preview['errors']));
+                throw new DomainException(
+                    $preview['existing']['present']
+                        ? tr('L\'operazione risulta già eseguita. Nessuna registrazione è stata modificata.')
+                        : implode(' ', $preview['errors'])
+                );
             }
 
             $description = $operation === 'apertura' ? tr('Apertura conto') : tr('Chiusura conto');
@@ -199,17 +198,23 @@ class Esercizio
                 throw new DomainException(tr('Verifica finale delle scritture non superata.'));
             }
 
-            $pdo->commit();
-
             return (int) $mastrino->id;
-        } catch (Throwable $e) {
-            if ($pdo->inTransaction()) {
-                $pdo->rollBack();
-            }
+        });
+    }
 
-            throw $e;
-        } finally {
-            $database->fetchOne('SELECT RELEASE_LOCK('.prepare($lock).') AS released');
+    /**
+     * Serializza Apertura e Chiusura sul record di configurazione condiviso.
+     * Il lock è transazionale e rimane attivo fino al commit esterno di OSM.
+     */
+    protected function lockExercise($database): void
+    {
+        $rows = $database->fetchArray(
+            'SELECT id FROM zz_settings WHERE nome=:name FOR UPDATE',
+            ['name' => 'Conto per Apertura conti patrimoniali']
+        );
+
+        if (empty($rows)) {
+            throw new DomainException(tr('Configurazione contabile incompleta: conto di apertura non disponibile.'));
         }
     }
 
