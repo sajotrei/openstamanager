@@ -386,28 +386,7 @@ foreach ($primo_livello as $conto_primo) {
 </div>';
 }
 
-// Verifico se è già stata eseguita l'apertura bilancio
-$bilancio_gia_chiuso = $dbo->fetchNum('SELECT id FROM co_movimenti WHERE is_chiusura=1 AND data BETWEEN '.prepare($_SESSION['period_start']).' AND '.prepare($_SESSION['period_end']));
-
-$msg = tr('Sei sicuro di voler aprire il bilancio?');
-$btn_class = 'btn-info';
-
-if ($bilancio_gia_chiuso) {
-    $msg .= ' '.tr('I movimenti di apertura già esistenti verranno annullati e ricreati').'.';
-    $btn_class = 'btn-default';
-}
-
-echo '
-<div class="text-right">
-    <button type="button" class="btn btn-lg '.$btn_class.'" data-op="chiudi-bilancio" data-title="'.tr('Chiusura bilancio').'" data-backto="record-list" data-msg="'.$msg.'" data-button="'.tr('Chiudi bilancio').'" data-class="btn btn-lg btn-primary" onclick="message( this );">
-        <i class="fa fa-folder"></i> '.tr('Chiusura bilancio').'
-    </button>
-</div>
-
-<div class="clearfix"></div>
-<hr>
-
-<script>
+echo '\n<div class="clearfix"></div>\n<hr>\n\n<script>\n
     $(document).ready(function() {
         $("#input-cerca").keyup(function(key) {
             if (key.which == 13) {
