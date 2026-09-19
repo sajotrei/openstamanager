@@ -13,12 +13,16 @@
 include_once __DIR__.'/../../core.php';
 
 use Modules\Partitario\Esercizio;
+use Modules\Partitario\Workflow;
 
 $esercizio = new Esercizio($_SESSION['period_start'], $_SESSION['period_end']);
 $previews = [
     'apertura' => $esercizio->getPreview('apertura'),
     'chiusura' => $esercizio->getPreview('chiusura'),
 ];
+$openingPresent = $previews['apertura']['existing']['present'];
+$closingPresent = $previews['chiusura']['existing']['present'];
+$hasPreviousBalances = $previews['apertura']['accounts_count'] > 0;
 $can_write = Permissions::check('rw', false);
 
 ?>
@@ -33,8 +37,9 @@ $can_write = Permissions::check('rw', false);
 foreach ($previews as $operation => $preview) {
     $title = $operation === 'apertura' ? tr('Apertura esercizio') : tr('Chiusura esercizio');
     $alreadyDone = $preview['existing']['present'];
-    $status = $alreadyDone ? tr('Eseguita') : ($preview['errors'] ? tr('Bloccata') : tr('Da eseguire'));
-    $statusClass = $alreadyDone ? 'badge-success' : ($preview['errors'] ? 'badge-danger' : 'badge-info');
+    $state = Workflow::state($operation, $preview, $openingPresent, $closingPresent, $hasPreviousBalances);
+    $status = $state['label'];
+    $statusClass = $state['class'];
     $detailId = 'exercise-'.$operation.'-details';
     $actionLabel = $operation === 'apertura' ? tr('Apri esercizio') : tr('Chiudi esercizio');
     $confirmLabel = $operation === 'apertura' ? tr('Conferma apertura') : tr('Conferma chiusura');
