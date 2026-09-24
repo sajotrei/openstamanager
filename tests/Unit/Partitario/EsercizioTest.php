@@ -7,77 +7,83 @@ use PHPUnit\Framework\TestCase;
 
 class EsercizioTest extends TestCase
 {
-    public function testPeriodoAnnualeSolare(): void
+    public function testPeriodiAnnualiETrimestrali(): void
     {
-        $esercizio = new Esercizio('2026-01-01', '2026-12-31');
-
-        $this->assertTrue($esercizio->isAnnual());
+        $this->assertTrue((new Esercizio('2026-01-01', '2026-12-31', '2026-01-01'))->isAnnual());
+        $this->assertTrue((new Esercizio('2025-07-01', '2026-06-30', '2025-07-01'))->isAnnual());
+        $this->assertFalse((new Esercizio('2026-01-01', '2026-03-31', '2026-01-01'))->isAnnual());
     }
 
-    public function testPeriodoAnnualeNonSolare(): void
+    public function testRegoleTemporali(): void
     {
-        $esercizio = new Esercizio('2025-07-01', '2026-06-30');
-
-        $this->assertTrue($esercizio->isAnnual());
+        $this->assertSame('before_start', Esercizio::temporalAvailability('apertura', '2026-01-01', '2026-12-31', '2025-12-31')['key']);
+        $this->assertTrue(Esercizio::temporalAvailability('apertura', '2026-01-01', '2026-12-31', '2026-01-01')['allowed']);
+        $this->assertSame('before_end', Esercizio::temporalAvailability('chiusura', '2026-01-01', '2026-12-31', '2026-12-30')['key']);
+        $this->assertTrue(Esercizio::temporalAvailability('chiusura', '2026-01-01', '2026-12-31', '2026-12-31')['allowed']);
     }
 
-    public function testPeriodoTrimestraleNonEUnEsercizio(): void
+    public function testAperturaCon184ContiEChiusuraCon208Conti(): void
     {
-        $esercizio = new Esercizio('2026-01-01', '2026-03-31');
-
-        $this->assertFalse($esercizio->isAnnual());
-    }
-
-    public function testCalcoloAperturaMantieneSegniEQuadra(): void
-    {
-        $result = Esercizio::calculateEntries('apertura', [
-            ['id' => 1, 'descrizione' => 'Cassa', 'totale' => 100.0],
-            ['id' => 2, 'descrizione' => 'Fornitore', 'totale' => -40.0],
-        ], 99, 'Apertura conti patrimoniali');
-
-        $this->assertSame(3, count($result['entries']));
-        $this->assertSame(100.0, $result['debit']);
-        $this->assertSame(100.0, $result['credit']);
-        $this->assertSame(-60.0, $result['entries'][2]['totale']);
-    }
-
-    public function testCalcoloChiusuraInverteSegniEQuadra(): void
-    {
-        $result = Esercizio::calculateEntries('chiusura', [
-            ['id' => 1, 'descrizione' => 'Cassa', 'totale' => 100.0],
-            ['id' => 2, 'descrizione' => 'Fornitore', 'totale' => -40.0],
-        ], 98, 'Chiusura conti patrimoniali');
-
-        $this->assertSame(-100.0, $result['entries'][0]['totale']);
-        $this->assertSame(40.0, $result['entries'][1]['totale']);
-        $this->assertSame(60.0, $result['entries'][2]['totale']);
-        $this->assertSame(100.0, $result['debit']);
-        $this->assertSame(100.0, $result['credit']);
-    }
-
-    public function testNessunSaldoNonCreaContropartitaZero(): void
-    {
-        $result = Esercizio::calculateEntries('apertura', [], 99, 'Apertura conti patrimoniali');
-
-        $this->assertSame([], $result['entries']);
-        $this->assertSame(0.0, $result['debit']);
-        $this->assertSame(0.0, $result['credit']);
-    }
-
-    public function testCentottantaquattroContiCreanoCentottantacinqueMovimentiInPareggio(): void
-    {
-        $rows = [];
+        $openingRows = [];
         for ($i = 1; $i <= 184; ++$i) {
-            $rows[] = [
-                'id' => $i,
-                'descrizione' => 'Conto '.$i,
-                'totale' => $i % 2 === 0 ? 100.0 : -100.0,
-            ];
+            $openingRows[] = ['id' => $i, 'descrizione' => 'Conto '.$i, 'totale' => $i % 2 ? 100.123456 : -50.123456];
         }
+        $opening = Esercizio::calculateEntries('apertura', $openingRows, 999, 'Apertura');
+        $this->assertCount(185, $opening['entries']);
+        $this->assertEqualsWithDelta($opening['debit'], $opening['credit'], 0.000001);
 
-        $result = Esercizio::calculateEntries('apertura', $rows, 999, 'Apertura conti patrimoniali');
+        $closingRows = [];
+        for ($i = 1; $i <= 208; ++$i) {
+            $closingRows[] = ['id' => $i, 'descrizione' => 'Conto '.$i, 'totale' => $i % 3 ? 10.333333 : -20.666666];
+        }
+        $closing = Esercizio::calculateEntries('chiusura', $closingRows, 998, 'Chiusura');
+        $this->assertCount(209, $closing['entries']);
+        $this->assertEqualsWithDelta($closing['debit'], $closing['credit'], 0.000001);
+    }
 
-        $this->assertCount(185, $result['entries']);
-        $this->assertEqualsWithDelta($result['debit'], $result['credit'], 0.000001);
+    public function testNessunaContropartitaSenzaSaldi(): void
+    {
+        $result = Esercizio::calculateEntries('apertura', [], 999, 'Apertura');
+        $this->assertSame([], $result['entries']);
+    }
+
+    public function testClassificazioneCoerenza(): void
+    {
+        $entries = [
+            ['idconto' => 1, 'totale' => 100.0],
+            ['idconto' => 2, 'totale' => -40.0],
+            ['idconto' => 99, 'totale' => -60.0],
+        ];
+        $existing = ['present' => true, 'rows' => 3, 'anomalies' => [], 'account_totals' => [1 => 100.0, 2 => -40.0, 99 => -60.0]];
+        $this->assertSame('consistent', Esercizio::classifyExisting($existing, $entries)['status']);
+
+        $existing['account_totals'][1] = 101.0;
+        $this->assertSame('stale', Esercizio::classifyExisting($existing, $entries)['status']);
+
+        $existing['anomalies'] = ['Mastrino non in pareggio'];
+        $this->assertSame('anomaly', Esercizio::classifyExisting($existing, $entries)['status']);
+    }
+
+    public function testValidazioneContiTecnici(): void
+    {
+        $valid = Esercizio::validateTechnicalAccountsData(
+            ['apertura' => 1, 'chiusura' => 2],
+            ['apertura' => ['gruppo' => 'Patrimoniale'], 'chiusura' => ['gruppo' => 'Patrimoniale']]
+        );
+        $this->assertTrue($valid['valid']);
+
+        $same = Esercizio::validateTechnicalAccountsData(
+            ['apertura' => 1, 'chiusura' => 1],
+            ['apertura' => ['gruppo' => 'Patrimoniale'], 'chiusura' => ['gruppo' => 'Patrimoniale']]
+        );
+        $this->assertFalse($same['valid']);
+    }
+
+    public function testSorgenteNonUsaPdoODistruzioneAutomatica(): void
+    {
+        $source = file_get_contents(__DIR__.'/../../src/Esercizio.php');
+        $this->assertStringNotContainsString('getPDO()', $source);
+        $this->assertDoesNotMatchRegularExpression('/DELETE\s+FROM\s+co_movimenti/i', $source);
+        $this->assertStringContainsString('getCapsule()->getConnection()', $source);
     }
 }
