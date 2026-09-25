@@ -1,0 +1,6 @@
+name = "Piano dei conti"
+title = "Piano dei conti"
+version = "1.0.0-RC7"
+directory = "partitario"
+options = ""
+compatibility = "2.10.4"
