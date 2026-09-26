@@ -7,7 +7,8 @@
 - Branch: `feature/partitario-gestione-esercizio-1.0.0-rc7`
 - Target: OpenSTAManager 2.10.4
 - ZIP: `Piano-dei-conti-Gestione-esercizio-1.0.0-RC7-OSM-2.10.4.zip`
-- SHA-256: `3f632c89645a899c6865cff970334342263717ea968153387b962865677c8e9b`
+- SHA-256 ZIP deterministico: `352d882809cb54c6e19ae13cdd224f987429ec7462ce2e80f63efc46bb25d0c7`
+- Workflow di verifica e packaging: `https://github.com/sajotrei/openstamanager/actions/runs/36204394016`
 - Report autorevole: `REPORT-pdc-gestione-esercizio-RC6.md`
 
 ## Stato validato precedente
@@ -23,7 +24,7 @@ Su OSMLAB RC4:
 
 ## Correzioni RC7
 
-- lettura bloccante dopo il lock e riserva dell'ultimo Mastrino;
+- lettura bloccante dopo il lock e prenotazione dell'identificativo Mastrino;
 - binding della conferma a periodo, data e fingerprint;
 - cambio del conto tecnico non classificato falsamente come `stale`;
 - primo esercizio con Apertura `Non necessaria`;
@@ -36,27 +37,31 @@ Su OSMLAB RC4:
 
 ## Test eseguiti
 
-- 22/22 test logici PASS;
-- 21/21 gate statici PASS;
-- 9/9 simulazioni esecuzione/rollback PASS;
-- 5/5 PHP lint PASS;
-- package/worktree identity PASS.
+Nel workflow GitHub Actions:
+
+- PHP lint runtime: PASS;
+- test logici standalone: 22/22 PASS;
+- gate statici: 21/21 PASS;
+- simulazioni esecuzione/rollback: 9/9 PASS;
+- sorgente applicativo ↔ snapshot `dist/`: PASS;
+- packaging deterministico: PASS.
 
 ## Test ancora necessari
 
-- concorrenza reale MySQL REPEATABLE READ;
-- due schede con cambio periodo;
+- concorrenza reale MySQL in `REPEATABLE READ` con due connessioni;
+- due schede browser con cambio periodo;
 - permessi reali Piano dei conti/Prima nota;
 - rendering browser della tabella differenze;
-- catena di tre esercizi;
-- regressione Fatture, Scadenzario, Prima nota;
-- installazione e rollback OSMLAB.
+- catena coerente di tre esercizi;
+- regressione Fatture, Scadenzario e Prima nota;
+- installazione, rollback e reinstallazione su OSMLAB.
 
 ## Vincoli
 
-- non implementare la Sezione B;
+- non implementare la Sezione B del report senza approvazione esplicita;
 - non cambiare la formula contabile;
 - non creare RC8 senza difetto riproducibile;
 - non promuovere a STABLE;
 - non aprire PR o issue;
-- lavorare su un branch Codex separato.
+- lavorare su un branch Codex separato;
+- classificare correttamente come `NOT RUN` i test che richiedono MySQL, browser o OSMLAB.
