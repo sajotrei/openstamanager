@@ -1,0 +1,85 @@
+name: Package PDC RC7
+
+on:
+  push:
+    branches:
+      - automation/partitario-rc7-package
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout verified RC7 branch
+        uses: actions/checkout@v4
+        with:
+          ref: feature/partitario-gestione-esercizio-1.0.0-rc7
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          coverage: none
+
+      - name: Lint runtime PHP
+        shell: bash
+        run: |
+          set -euo pipefail
+          find dist/partitario-gestione-esercizio/1.0.0-RC7/partitario -name '*.php' -print0 \
+            | xargs -0 -n1 php -l
+
+      - name: Run standalone RC7 tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          php modules/partitario/tests/RC7UnitStandalone.php
+          php modules/partitario/tests/RC7StaticStandalone.php
+          php modules/partitario/tests/RC7ExecuteSimulation.php
+
+      - name: Verify source and runtime snapshot
+        shell: bash
+        run: |
+          set -euo pipefail
+          diff -u modules/partitario/custom/actions.php dist/partitario-gestione-esercizio/1.0.0-RC7/partitario/custom/actions.php
+          diff -u modules/partitario/custom/edit.php dist/partitario-gestione-esercizio/1.0.0-RC7/partitario/custom/edit.php
+          diff -u modules/partitario/custom/gestione_esercizio.php dist/partitario-gestione-esercizio/1.0.0-RC7/partitario/custom/gestione_esercizio.php
+          diff -u modules/partitario/custom/src/Esercizio.php dist/partitario-gestione-esercizio/1.0.0-RC7/partitario/custom/src/Esercizio.php
+          diff -u modules/partitario/custom/src/Workflow.php dist/partitario-gestione-esercizio/1.0.0-RC7/partitario/custom/src/Workflow.php
+
+      - name: Build deterministic installer ZIP
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          from zipfile import ZipFile, ZipInfo, ZIP_DEFLATED
+          import hashlib
+
+          source = Path('dist/partitario-gestione-esercizio/1.0.0-RC7/partitario')
+          output = Path('Piano-dei-conti-Gestione-esercizio-1.0.0-RC7-OSM-2.10.4.zip')
+          fixed_time = (2026, 1, 1, 0, 0, 0)
+
+          with ZipFile(output, 'w', ZIP_DEFLATED, compresslevel=9) as archive:
+              for path in sorted(p for p in source.rglob('*') if p.is_file()):
+                  arcname = str(path.relative_to(source.parent))
+                  info = ZipInfo(arcname, fixed_time)
+                  info.compress_type = ZIP_DEFLATED
+                  info.external_attr = 0o100644 << 16
+                  archive.writestr(info, path.read_bytes())
+
+          digest = hashlib.sha256(output.read_bytes()).hexdigest()
+          Path('RC7-SHA256.txt').write_text(f'{digest}  {output.name}\n', encoding='utf-8')
+          print(digest)
+          PY
+
+      - name: Upload package artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: pdc-rc7-package
+          path: |
+            Piano-dei-conti-Gestione-esercizio-1.0.0-RC7-OSM-2.10.4.zip
+            RC7-SHA256.txt
+          if-no-files-found: error
+          retention-days: 30
